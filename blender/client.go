@@ -21,8 +21,8 @@ const (
 	defaultHost      = "localhost"
 	defaultPort      = 9876
 	connectTimeout   = 5 * time.Second
-	requestTimeout   = 30 * time.Second
-	maxResponseBytes = 10 * 1024 * 1024 // 10 MiB, matches the add-on limit
+	requestTimeout   = 120 * time.Second
+	maxResponseBytes = 50 * 1024 * 1024 // 50 MiB
 )
 
 // ExecResult is the response from Blender after executing code.

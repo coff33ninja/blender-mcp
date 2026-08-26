@@ -545,7 +545,12 @@ func ToolDefs() []Tool {
 					},
 					"physics_type": map[string]any{
 						"type":        "string",
-						"description": "Physics type to add (e.g. RIGID_BODY, CLOTH, FLUID, FORCE_FIELD, SOFT_BODY, PARTICLE_SYSTEM)",
+						"description": "Physics type to add/remove (e.g. RIGID_BODY, CLOTH, FLUID, FORCE_FIELD, SOFT_BODY, PARTICLE_SYSTEM, DYNAMIC_PAINT, SIMPLIFY, MESH_SEQUENCE_CACHE)",
+					},
+					"force_field_type": map[string]any{
+						"type":        "string",
+						"description": "Force field sub-type when physics_type is FORCE_FIELD",
+						"enum":        []string{"FORCE", "WIND", "VORTEX", "MAGNET", "RHARBOR", "CHARGE", "LENNARDJENKINS", "TEXTURE", "HARMONIC", "TURBULENCE", "DRAG", "SMOKE_FLOW"},
 					},
 				},
 				"required": []string{"object_name"},
@@ -1040,6 +1045,400 @@ func ToolDefs() []Tool {
 				},
 			},
 		},
+		{
+			Name:        "set_cursor",
+			Description: "Set the 3D cursor location and optionally rotation.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"location": map[string]any{
+						"type":        "array",
+						"description": "3D cursor [x, y, z] position",
+						"items":       map[string]any{"type": "number"},
+					},
+					"rotation": map[string]any{
+						"type":        "array",
+						"description": "3D cursor [rx, ry, rz] rotation in degrees",
+						"items":       map[string]any{"type": "number"},
+					},
+				},
+			},
+		},
+		{
+			Name:        "set_snap",
+			Description: "Configure snap settings: snap type, target, and toggle.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"use_snap": map[string]any{
+						"type":        "boolean",
+						"description": "Enable/disable snapping",
+					},
+					"snap_target": map[string]any{
+						"type":        "string",
+						"description": "Snap target",
+						"enum":        []string{"CLOSEST", "CENTER", "MEDIAN", "ACTIVE"},
+					},
+					"snap_element": map[string]any{
+						"type":        "string",
+						"description": "Snap element type",
+						"enum":        []string{"VERTEX", "EDGE", "FACE", "VOLUME", "INCREMENT", "GRID"},
+					},
+				},
+			},
+		},
+		{
+			Name:        "edit_mesh_data",
+			Description: "Edit mesh data directly: add/remove vertices, edges, faces. Returns mesh stats.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"object_name": map[string]any{
+						"type":        "string",
+						"description": "Object to edit",
+					},
+					"action": map[string]any{
+						"type":        "string",
+						"description": "Action to perform",
+						"enum":        []string{"stats", "add_vertices", "remove_vertices", "Triangulate", "RemoveDoubles", "RecalculateNormals"},
+					},
+					"vertices": map[string]any{
+						"type":        "array",
+						"description": "Vertices to add [[x,y,z], ...]",
+						"items":       map[string]any{"type": "array", "items": map[string]any{"type": "number"}},
+					},
+					"indices": map[string]any{
+						"type":        "array",
+						"description": "Vertex indices to remove",
+						"items":       map[string]any{"type": "integer"},
+					},
+				},
+				"required": []string{"object_name", "action"},
+			},
+		},
+		{
+			Name:        "set_particle_system",
+			Description: "Add or configure a particle system on an object.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"object_name": map[string]any{
+						"type":        "string",
+						"description": "Object to add particles to",
+					},
+					"action": map[string]any{
+						"type":        "string",
+						"description": "Action to perform",
+						"enum":        []string{"add", "remove", "configure", "list"},
+					},
+					"particle_type": map[string]any{
+						"type":        "string",
+						"description": "Particle type: EMITTER or HAIR",
+						"enum":        []string{"EMITTER", "HAIR"},
+					},
+					"count": map[string]any{
+						"type":        "integer",
+						"description": "Number of particles",
+					},
+					"seed": map[string]any{
+						"type":        "integer",
+						"description": "Random seed",
+					},
+					"lifetime": map[string]any{
+						"type":        "number",
+						"description": "Particle lifetime in frames",
+					},
+				},
+				"required": []string{"object_name", "action"},
+			},
+		},
+		{
+			Name:        "set_render_passes",
+			Description: "Enable or disable render passes for the active view layer.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"passes": map[string]any{
+						"type":        "object",
+						"description": "Pass name -> enabled mapping, e.g. {\"use_pass_z\": true, \"use_pass_normal\": true}",
+						"additionalProperties": map[string]any{"type": "boolean"},
+					},
+				},
+				"required": []string{"passes"},
+			},
+		},
+		{
+			Name:        "create_object",
+			Description: "Create any Blender object type: EMPTY, ARMATURE, CURVE, CURVES, FONT, GREASEPENCIL, LATTICE, LIGHT_PROBE, META, POINTCLOUD, SPEAKER, SURFACE, VOLUME. For MESH, use create_mesh_object instead.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"object_type": map[string]any{
+						"type":        "string",
+						"description": "Object type to create",
+						"enum":        []string{"EMPTY", "ARMATURE", "CURVE", "CURVES", "FONT", "GREASEPENCIL", "LATTICE", "LIGHT_PROBE", "META", "POINTCLOUD", "SPEAKER", "SURFACE", "VOLUME"},
+					},
+					"name": map[string]any{
+						"type":        "string",
+						"description": "Object name",
+					},
+					"location": map[string]any{
+						"type":        "array",
+						"description": "Location [x, y, z]",
+						"items":       map[string]any{"type": "number"},
+					},
+					"empty_display_type": map[string]any{
+						"type":        "string",
+						"description": "Empty display type (EMPTY only)",
+						"enum":        []string{"PLAIN_AXES", "ARROWS", "SINGLE_ARROW", "CIRCLE", "CUBE", "SPHERE", "CONE", "MATMESH"},
+					},
+					"curve_type": map[string]any{
+						"type":        "string",
+						"description": "Curve type: BEZIER or NURBS (CURVE only)",
+						"enum":        []string{"BEZIER", "NURBS"},
+					},
+					"font_text": map[string]any{
+						"type":        "string",
+						"description": "Text content (FONT only)",
+					},
+				},
+				"required": []string{"object_type"},
+			},
+		},
+		{
+			Name:        "grease_pencil_manage",
+			Description: "Manage Grease Pencil objects: draw strokes, list/apply modifiers, manage layers, fill, extrude, delete, and other GP operations.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"object_name": map[string]any{
+						"type":        "string",
+						"description": "Grease Pencil object name",
+					},
+					"action": map[string]any{
+						"type":        "string",
+						"description": "Action to perform",
+						"enum": []string{
+							"list_layers", "add_layer", "remove_layer",
+							"list_modifiers", "add_modifier", "remove_modifier",
+							"draw_stroke", "fill", "extrude", "delete",
+							"dissolve", "duplicate", "clean_loose",
+							"convert_curve_type", "set_cyclic",
+							"list_frames", "add_frame", "remove_frame",
+							"active_frame_delete", "delete_frame",
+							"brush_stroke", "caps_set", "copy",
+							"delete_breakdown", "erase_box", "erase_lasso",
+							"frame_clean_duplicate", "bake_grease_pencil_animation",
+						},
+					},
+					"layer_name": map[string]any{
+						"type":        "string",
+						"description": "Layer name (for layer actions)",
+					},
+					"modifier_name": map[string]any{
+						"type":        "string",
+						"description": "Modifier name (for modifier actions)",
+					},
+					"modifier_type": map[string]any{
+						"type":        "string",
+						"description": "GP modifier type (for add_modifier)",
+						"enum": []string{
+							"GREASE_PENCIL_ARRAY", "GREASE_PENCIL_BUILD", "GREASE_PENCIL_MIRROR",
+							"GREASE_PENCIL_MULTIPLY", "GREASE_PENCIL_NOISE", "GREASE_PENCIL_OFFSET",
+							"GREASE_PENCIL_SMOOTH", "GREASE_PENCIL_SUBDIV", "GREASE_PENCIL_ENVELOPE",
+							"GREASE_PENCIL_OUTLINE", "GREASE_PENCIL_HOOK", "GREASE_PENCIL_LATTICE",
+							"GREASE_PENCIL_DASH", "GREASE_PENCIL_ARMATURE", "GREASE_PENCIL_SHRINKWRAP",
+							"GREASE_PENCIL_SIMPLIFY", "GREASE_PENCIL_THICKNESS", "GREASE_PENCIL_LENGTH",
+							"GREASE_PENCIL_COLOR", "GREASE_PENCIL_TINT", "GREASE_PENCIL_OPACITY",
+							"GREASE_PENCIL_TEXTURE", "GREASE_PENCIL_TIME",
+							"GREASE_PENCIL_VERTEX_WEIGHT_PROXIMITY", "GREASE_PENCIL_VERTEX_WEIGHT_ANGLE",
+						},
+					},
+					"points": map[string]any{
+						"type":        "array",
+						"description": "Stroke points [[x,y,z], ...] (for draw_stroke)",
+						"items":       map[string]any{"type": "array", "items": map[string]any{"type": "number"}},
+					},
+					"pressure": map[string]any{
+						"type":        "number",
+						"description": "Pen pressure (for draw_stroke)",
+					},
+					"curve_type": map[string]any{
+						"type":        "string",
+						"description": "Target curve type (for convert_curve_type)",
+						"enum":        []string{"BEZIER", "NURBS", "POLY"},
+					},
+				},
+				"required": []string{"object_name", "action"},
+			},
+		},
+		{
+			Name:        "compositor_nodes",
+			Description: "Manage compositor node tree: add/remove/connect nodes, list available node types.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"action": map[string]any{
+						"type":        "string",
+						"description": "Action to perform",
+						"enum":        []string{"list_types", "list_nodes", "add_node", "remove_node", "connect_nodes"},
+					},
+					"node_type": map[string]any{
+						"type":        "string",
+						"description": "Compositor node class name (e.g. CompositorNodeRGB, CompositorNodeBlur)",
+					},
+					"node_name": map[string]any{
+						"type":        "string",
+						"description": "Instance name of a specific node",
+					},
+					"from_node": map[string]any{
+						"type":        "string",
+						"description": "Source node name (for connect_nodes)",
+					},
+					"from_socket": map[string]any{
+						"type":        "string",
+						"description": "Source socket name (for connect_nodes)",
+					},
+					"to_node": map[string]any{
+						"type":        "string",
+						"description": "Destination node name (for connect_nodes)",
+					},
+					"to_socket": map[string]any{
+						"type":        "string",
+						"description": "Destination socket name (for connect_nodes)",
+					},
+				},
+				"required": []string{"action"},
+			},
+		},
+		{
+			Name:        "node_wrangler_ops",
+			Description: "Node Wrangler add-on shortcuts: preview links, swap nodes, mix nodes, collapse/expand, frames, textures setup.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"action": map[string]any{
+						"type":        "string",
+						"description": "Node Wrangler action",
+						"enum": []string{
+							"preview_link", "swap_nodes", "mix_nodes",
+							"collapse_all", "expand_all", "frame_selected",
+							"add_texture_setup", "connect_viewer",
+							"disconnect_viewer", "node_switch",
+						},
+					},
+					"object_name": map[string]any{
+						"type":        "string",
+						"description": "Object with material (for material node actions)",
+					},
+					"node_tree_type": map[string]any{
+						"type":        "string",
+						"description": "Node tree type: MATERIAL, WORLD, or COMpositor",
+						"enum":        []string{"MATERIAL", "WORLD", "COMpositor"},
+					},
+				},
+				"required": []string{"action"},
+			},
+		},
+		{
+			Name:        "pose_library_ops",
+			Description: "Pose Library operations: create asset library, save pose, apply pose, list poses.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"action": map[string]any{
+						"type":        "string",
+						"description": "Pose library action",
+						"enum":        []string{"save_pose", "apply_pose", "list_poses", "create_library"},
+					},
+					"armature_name": map[string]any{
+						"type":        "string",
+						"description": "Armature object name",
+					},
+					"pose_name": map[string]any{
+						"type":        "string",
+						"description": "Pose name",
+					},
+					"library_path": map[string]any{
+						"type":        "string",
+						"description": "Asset library path (for create_library)",
+					},
+				},
+				"required": []string{"action"},
+			},
+		},
+		{
+			Name:        "rigify_ops",
+			Description: "Rigify add-on operations: generate rig, generate metarig, list rig types.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"action": map[string]any{
+						"type":        "string",
+						"description": "Rigify action",
+						"enum":        []string{"generate_rig", "add_metarig", "list_metarigs", "list_rig_types"},
+					},
+					"armature_name": map[string]any{
+						"type":        "string",
+						"description": "Armature/metarig name",
+					},
+					"metarig_type": map[string]any{
+						"type":        "string",
+						"description": "Metarig template type (for add_metarig)",
+						"enum": []string{
+							"basic", "human", "quadruped", "bird", "cat",
+							"horse", "monkey", "shark", "wolf",
+							"arm.finger", "leg.plane.02", "spine.basic.01",
+							"spine.reptile.01", "head.basic.01",
+						},
+					},
+				},
+				"required": []string{"action"},
+			},
+		},
+		{
+			Name:        "manage_shader_nodes",
+			Description: "Manage material shader node tree: add/remove/connect nodes, list available node types. Works on the active material of an object.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"object_name": map[string]any{
+						"type":        "string",
+						"description": "Object with material to edit",
+					},
+					"action": map[string]any{
+						"type":        "string",
+						"description": "Action to perform",
+						"enum":        []string{"list_types", "list_nodes", "add_node", "remove_node", "connect_nodes"},
+					},
+					"node_type": map[string]any{
+						"type":        "string",
+						"description": "Shader node class name (e.g. ShaderNodeBsdfPrincipled, ShaderNodeTexImage, ShaderNodeMix)",
+					},
+					"node_name": map[string]any{
+						"type":        "string",
+						"description": "Instance name of a specific node",
+					},
+					"from_node": map[string]any{
+						"type":        "string",
+						"description": "Source node name (for connect_nodes)",
+					},
+					"from_socket": map[string]any{
+						"type":        "string",
+						"description": "Source socket name (for connect_nodes)",
+					},
+					"to_node": map[string]any{
+						"type":        "string",
+						"description": "Destination node name (for connect_nodes)",
+					},
+					"to_socket": map[string]any{
+						"type":        "string",
+						"description": "Destination socket name (for connect_nodes)",
+					},
+				},
+				"required": []string{"object_name", "action"},
+			},
+		},
 	}
 }
 
@@ -1099,6 +1498,21 @@ func RegisterTools(bc *blender.Client) *ToolRegistry {
 		{ToolDefs()[45], handleSetupEffector(bc)},
 		{ToolDefs()[46], handleSetupCamera(bc)},
 		{ToolDefs()[47], handleManageCollections(bc)},
+		{ToolDefs()[48], handleSetRenderEngine(bc)},
+		{ToolDefs()[49], handleSetRenderFormat(bc)},
+		{ToolDefs()[50], handleSetWorldEnvironment(bc)},
+		{ToolDefs()[51], handleSetCursor(bc)},
+		{ToolDefs()[52], handleSetSnap(bc)},
+		{ToolDefs()[53], handleEditMeshData(bc)},
+		{ToolDefs()[54], handleSetParticleSystem(bc)},
+		{ToolDefs()[55], handleSetRenderPasses(bc)},
+		{ToolDefs()[56], handleCreateObject(bc)},
+		{ToolDefs()[57], handleGreasePencilManage(bc)},
+		{ToolDefs()[58], handleCompositorNodes(bc)},
+		{ToolDefs()[59], handleManageShaderNodes(bc)},
+		{ToolDefs()[60], handleNodeWranglerOps(bc)},
+		{ToolDefs()[61], handlePoseLibraryOps(bc)},
+		{ToolDefs()[62], handleRigifyOps(bc)},
 	}
 
 	for _, entry := range allTools {
@@ -1132,6 +1546,22 @@ func getFloatSliceArg(args map[string]any, key string) []float64 {
 		}
 	}
 	return nil
+}
+
+// helper to convert any numeric value to float64
+func toFloat(v any) float64 {
+	switch n := v.(type) {
+	case float64:
+		return n
+	case float32:
+		return float64(n)
+	case int:
+		return float64(n)
+	case int64:
+		return float64(n)
+	default:
+		return 0
+	}
 }
 
 func fmtFloats(vals []float64) string {
@@ -1601,6 +2031,12 @@ func handleImport3DFile(bc *blender.Client) ToolHandler {
 			importFn = fmt.Sprintf(`bpy.ops.wm.stl_import(filepath="%s")`, filepath)
 		case ".ply":
 			importFn = fmt.Sprintf(`bpy.ops.wm.ply_import(filepath="%s")`, filepath)
+		case ".bvh":
+			importFn = fmt.Sprintf(`bpy.ops.import_anim.bvh(filepath="%s")`, filepath)
+		case ".svg":
+			importFn = fmt.Sprintf(`bpy.ops.import_curve.svg(filepath="%s")`, filepath)
+		case ".vrm":
+			importFn = fmt.Sprintf(`bpy.ops.import_curve.vrm(filepath="%s")`, filepath)
 		default:
 			return nil, &Error{Code: CodeInvalidParams, Message: "unsupported file type: " + ext}
 		}
@@ -1641,6 +2077,8 @@ func handleExport3DFile(bc *blender.Client) ToolHandler {
 			exportFn = fmt.Sprintf(`bpy.ops.wm.stl_export(filepath="%s"%s)`, filepath, selArg)
 		case ".ply":
 			exportFn = fmt.Sprintf(`bpy.ops.wm.ply_export(filepath="%s"%s)`, filepath, selArg)
+		case ".bvh":
+			exportFn = fmt.Sprintf(`bpy.ops.export_anim.bvh(filepath="%s"%s)`, filepath, selArg)
 		default:
 			return nil, &Error{Code: CodeInvalidParams, Message: "unsupported file type: " + ext}
 		}
@@ -2273,6 +2711,12 @@ else:
         phys.append({"type": "SOFT_BODY"})
     if obj.modifiers.get("Particle System"):
         phys.append({"type": "PARTICLE_SYSTEM"})
+    if obj.modifiers.get("Dynamic Paint"):
+        phys.append({"type": "DYNAMIC_PAINT"})
+    if obj.modifiers.get("Simplify"):
+        phys.append({"type": "SIMPLIFY"})
+    if obj.modifiers.get("Mesh Sequence Cache"):
+        phys.append({"type": "MESH_SEQUENCE_CACHE"})
     result = {"object": obj.name, "physics": phys, "count": len(phys)}
 `, objName)
 			return execAndFormat(bc, code)
@@ -2316,14 +2760,20 @@ else:
     result = {"added": "FLUID", "object": obj.name}
 `, objName)
 			case "FORCE_FIELD":
+				ffType := getStringArg(args, "force_field_type")
+				if ffType == "" {
+					ffType = "WIND"
+				}
 				code = fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
 if obj is None:
     result = {"error": "object not found"}
 else:
-    obj.field.type = "WIND"
-    result = {"added": "FORCE_FIELD", "object": obj.name}
-`, objName)
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.object.effector_add(type="%s")
+    result = {"added": "FORCE_FIELD", "field_type": "%s", "object": obj.name}
+`, objName, ffType, ffType)
 			case "SOFT_BODY":
 				code = fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
@@ -2341,6 +2791,33 @@ if obj is None:
 else:
     mod = obj.modifiers.new(name="Particle", type="PARTICLE_SYSTEM")
     result = {"added": "PARTICLE_SYSTEM", "object": obj.name}
+`, objName)
+			case "DYNAMIC_PAINT":
+				code = fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None:
+    result = {"error": "object not found"}
+else:
+    mod = obj.modifiers.new(name="Dynamic Paint", type="DYNAMIC_PAINT")
+    result = {"added": "DYNAMIC_PAINT", "object": obj.name}
+`, objName)
+			case "SIMPLIFY":
+				code = fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None:
+    result = {"error": "object not found"}
+else:
+    mod = obj.modifiers.new(name="Simplify", type="SIMPLIFY")
+    result = {"added": "SIMPLIFY", "object": obj.name}
+`, objName)
+			case "MESH_SEQUENCE_CACHE":
+				code = fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None:
+    result = {"error": "object not found"}
+else:
+    mod = obj.modifiers.new(name="Mesh Sequence Cache", type="MESH_SEQUENCE_CACHE")
+    result = {"added": "MESH_SEQUENCE_CACHE", "object": obj.name}
 `, objName)
 			default:
 				return nil, &Error{Code: CodeInvalidParams, Message: "unknown physics type: " + physType}
@@ -2365,6 +2842,18 @@ else:
     obj.select_set(True)
     bpy.ops.rigidbody.object_remove()
     result = {"removed": "RIGID_BODY", "object": obj.name}
+`, objName)
+			case "FORCE_FIELD":
+				code = fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None:
+    result = {"error": "object not found"}
+else:
+    if obj.field:
+        obj.field = None
+        result = {"removed": "FORCE_FIELD", "object": obj.name}
+    else:
+        result = {"error": "no force field on object"}
 `, objName)
 			default:
 				code = fmt.Sprintf(`import bpy
@@ -3103,6 +3592,1558 @@ for spec in collections_spec:
 result = {"created": created, "moved": moved, "skipped": skipped}
 `, strings.Join(colEntries, ", "))
 		return execAndFormat(bc, code)
+	}
+}
+
+func handleSetRenderEngine(bc *blender.Client) ToolHandler {
+	return func(args map[string]any) (any, *Error) {
+		engine := getStringArg(args, "engine")
+		if engine == "" {
+			return nil, &Error{Code: CodeInvalidParams, Message: "engine is required"}
+		}
+		code := fmt.Sprintf(`import bpy
+bpy.context.scene.render.engine = "%s"
+result = {"engine": bpy.context.scene.render.engine}
+`, engine)
+		return execAndFormat(bc, code)
+	}
+}
+
+func handleSetRenderFormat(bc *blender.Client) ToolHandler {
+	return func(args map[string]any) (any, *Error) {
+		parts := []string{}
+		if v := getStringArg(args, "file_format"); v != "" {
+			parts = append(parts, fmt.Sprintf(`r.image_settings.file_format = "%s"`, v))
+		}
+		if v := getStringArg(args, "color_mode"); v != "" {
+			parts = append(parts, fmt.Sprintf(`r.image_settings.color_mode = "%s"`, v))
+		}
+		if v := getStringArg(args, "color_depth"); v != "" {
+			parts = append(parts, fmt.Sprintf(`r.image_settings.color_depth = "%s"`, v))
+		}
+		if v, ok := args["resolution_x"].(float64); ok {
+			parts = append(parts, fmt.Sprintf(`r.resolution_x = %d`, int(v)))
+		}
+		if v, ok := args["resolution_y"].(float64); ok {
+			parts = append(parts, fmt.Sprintf(`r.resolution_y = %d`, int(v)))
+		}
+		if v, ok := args["resolution_percentage"].(float64); ok {
+			parts = append(parts, fmt.Sprintf(`r.resolution_percentage = %d`, int(v)))
+		}
+		if len(parts) == 0 {
+			return nil, &Error{Code: CodeInvalidParams, Message: "at least one parameter is required"}
+		}
+		code := fmt.Sprintf(`import bpy
+r = bpy.context.scene.render
+%s
+result = {
+    "file_format": r.image_settings.file_format,
+    "color_mode": r.image_settings.color_mode,
+    "resolution_x": r.resolution_x,
+    "resolution_y": r.resolution_y,
+    "resolution_percentage": r.resolution_percentage,
+}
+`, strings.Join(parts, "\n"))
+		return execAndFormat(bc, code)
+	}
+}
+
+func handleSetWorldEnvironment(bc *blender.Client) ToolHandler {
+	return func(args map[string]any) (any, *Error) {
+		parts := []string{}
+		if color := getFloatSliceArg(args, "color"); len(color) >= 3 {
+			parts = append(parts, fmt.Sprintf(`bg_node = world.node_tree.nodes.get("Background")
+if bg_node:
+    bg_node.inputs["Color"].default_value = (%.4f, %.4f, %.4f, 1.0)`, color[0], color[1], color[2]))
+		}
+		if v, ok := args["strength"].(float64); ok {
+			parts = append(parts, fmt.Sprintf(`bg_node = world.node_tree.nodes.get("Background")
+if bg_node:
+    bg_node.inputs["Strength"].default_value = %.4f`, v))
+		}
+		if texPath := getStringArg(args, "texture_path"); texPath != "" {
+			parts = append(parts, fmt.Sprintf(`import os
+tex_node = world.node_tree.nodes.new('ShaderNodeTexEnvironment')
+tex_node.image = bpy.data.images.load(r"%s")
+bg_node = world.node_tree.nodes.get("Background")
+if bg_node:
+    world.node_tree.links.new(tex_node.outputs["Color"], bg_node.inputs["Color"])`, texPath))
+		}
+		if len(parts) == 0 {
+			return nil, &Error{Code: CodeInvalidParams, Message: "at least one parameter is required"}
+		}
+		code := fmt.Sprintf(`import bpy
+world = bpy.context.scene.world
+if world is None:
+    world = bpy.data.worlds.new("World")
+    bpy.context.scene.world = world
+if not world.use_nodes:
+    world.use_nodes = True
+%s
+result = {"world": world.name, "use_nodes": world.use_nodes}
+`, strings.Join(parts, "\n"))
+		return execAndFormat(bc, code)
+	}
+}
+
+func handleSetCursor(bc *blender.Client) ToolHandler {
+	return func(args map[string]any) (any, *Error) {
+		parts := []string{}
+		if loc := getFloatSliceArg(args, "location"); len(loc) >= 3 {
+			parts = append(parts, fmt.Sprintf(`bpy.context.scene.cursor.location = (%.6f, %.6f, %.6f)`, loc[0], loc[1], loc[2]))
+		}
+		if rot := getFloatSliceArg(args, "rotation"); len(rot) >= 3 {
+			parts = append(parts, fmt.Sprintf(`import math
+bpy.context.scene.cursor.rotation_euler = (math.radians(%.4f), math.radians(%.4f), math.radians(%.4f))`, rot[0], rot[1], rot[2]))
+		}
+		if len(parts) == 0 {
+			return nil, &Error{Code: CodeInvalidParams, Message: "at least one of location or rotation is required"}
+		}
+		code := fmt.Sprintf(`import bpy
+%s
+c = bpy.context.scene.cursor
+result = {"location": list(c.location), "rotation": [round(math.degrees(r), 2) for c_index, r in enumerate(c.rotation_euler)] if hasattr(c, 'rotation_euler') else []}
+`, strings.Join(parts, "\n"))
+		return execAndFormat(bc, code)
+	}
+}
+
+func handleSetSnap(bc *blender.Client) ToolHandler {
+	return func(args map[string]any) (any, *Error) {
+		parts := []string{}
+		if v, ok := args["use_snap"].(bool); ok {
+			parts = append(parts, fmt.Sprintf(`ts.use_snap = %v`, v))
+		}
+		if v := getStringArg(args, "snap_target"); v != "" {
+			parts = append(parts, fmt.Sprintf(`ts.snap_target = "%s"`, v))
+		}
+		if v := getStringArg(args, "snap_element"); v != "" {
+			parts = append(parts, fmt.Sprintf(`ts.snap_element = "%s"`, v))
+		}
+		if len(parts) == 0 {
+			return nil, &Error{Code: CodeInvalidParams, Message: "at least one parameter is required"}
+		}
+		code := fmt.Sprintf(`import bpy
+ts = bpy.context.scene.tool_settings
+%s
+result = {
+    "use_snap": ts.use_snap,
+    "snap_target": ts.snap_target,
+    "snap_element": ts.snap_element,
+}
+`, strings.Join(parts, "\n"))
+		return execAndFormat(bc, code)
+	}
+}
+
+func handleEditMeshData(bc *blender.Client) ToolHandler {
+	return func(args map[string]any) (any, *Error) {
+		objName := getStringArg(args, "object_name")
+		action := getStringArg(args, "action")
+		if objName == "" || action == "" {
+			return nil, &Error{Code: CodeInvalidParams, Message: "object_name and action are required"}
+		}
+
+		switch action {
+		case "stats":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'MESH':
+    result = {"error": "object not found or not a mesh"}
+else:
+    mesh = obj.data
+    result = {
+        "object": obj.name,
+        "vertices": len(mesh.vertices),
+        "edges": len(mesh.edges),
+        "polygons": len(mesh.polygons),
+        "loops": len(mesh.loops),
+    }
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "add_vertices":
+			vertsRaw, ok := args["vertices"].([]any)
+			if !ok || len(vertsRaw) == 0 {
+				return nil, &Error{Code: CodeInvalidParams, Message: "vertices array is required"}
+			}
+			vertStrs := []string{}
+			for _, v := range vertsRaw {
+				if arr, ok := v.([]any); ok && len(arr) >= 3 {
+					vertStrs = append(vertStrs, fmt.Sprintf(`(%.6f, %.6f, %.6f)`, toFloat(arr[0]), toFloat(arr[1]), toFloat(arr[2])))
+				}
+			}
+			code := fmt.Sprintf(`import bpy, bmesh
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'MESH':
+    result = {"error": "object not found or not a mesh"}
+else:
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    new_verts = [bm.verts.new(v) for v in [%s]]
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.update()
+    result = {"added_vertices": len(new_verts), "total_vertices": len(obj.data.vertices)}
+`, objName, strings.Join(vertStrs, ", "))
+			return execAndFormat(bc, code)
+
+		case "remove_vertices":
+			indicesRaw, ok := args["indices"].([]any)
+			if !ok || len(indicesRaw) == 0 {
+				return nil, &Error{Code: CodeInvalidParams, Message: "indices array is required"}
+			}
+			indices := []string{}
+			for _, idx := range indicesRaw {
+				indices = append(indices, fmt.Sprintf(`%d`, int(toFloat(idx))))
+			}
+			code := fmt.Sprintf(`import bpy, bmesh
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'MESH':
+    result = {"error": "object not found or not a mesh"}
+else:
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bm.verts.ensure_lookup_table()
+    to_remove = [bm.verts[i] for i in [%s] if i < len(bm.verts)]
+    bmesh.ops.delete(bm, geom=to_remove, context='VERTS')
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.update()
+    result = {"removed_vertices": len(to_remove), "total_vertices": len(obj.data.vertices)}
+`, objName, strings.Join(indices, ", "))
+			return execAndFormat(bc, code)
+
+		case "Triangulate", "RemoveDoubles", "RecalculateNormals":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'MESH':
+    result = {"error": "object not found or not a mesh"}
+else:
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.%s()
+    bpy.ops.object.mode_set(mode='OBJECT')
+    result = {"action": "%s", "object": obj.name}
+`, objName, strings.ToLower(action), action)
+			return execAndFormat(bc, code)
+
+		default:
+			return nil, &Error{Code: CodeInvalidParams, Message: "unknown action: " + action}
+		}
+	}
+}
+
+func handleSetParticleSystem(bc *blender.Client) ToolHandler {
+	return func(args map[string]any) (any, *Error) {
+		objName := getStringArg(args, "object_name")
+		action := getStringArg(args, "action")
+		if objName == "" || action == "" {
+			return nil, &Error{Code: CodeInvalidParams, Message: "object_name and action are required"}
+		}
+
+		switch action {
+		case "list":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None:
+    result = {"error": "object not found"}
+else:
+    systems = []
+    for ps in obj.particle_systems:
+        settings = ps.settings
+        systems.append({
+            "name": ps.name,
+            "type": settings.type,
+            "count": settings.count,
+            "seed": settings.seed,
+            "lifetime": settings.lifetime,
+        })
+    result = {"object": obj.name, "particle_systems": systems, "count": len(systems)}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "add":
+			particleType := getStringArg(args, "particle_type")
+			if particleType == "" {
+				particleType = "EMITTER"
+			}
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None:
+    result = {"error": "object not found"}
+else:
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.object.particle_system_add()
+    ps = obj.particle_systems.active
+    ps.settings.type = "%s"
+`, objName, particleType)
+			if v, ok := args["count"].(float64); ok {
+				code += fmt.Sprintf(`    ps.settings.count = %d
+`, int(v))
+			}
+			if v, ok := args["lifetime"].(float64); ok {
+				code += fmt.Sprintf(`    ps.settings.lifetime = %.1f
+`, v)
+			}
+			if v, ok := args["seed"].(float64); ok {
+				code += fmt.Sprintf(`    ps.settings.seed = %d
+`, int(v))
+			}
+			code += `    result = {"object": obj.name, "particle_system": ps.name, "type": ps.settings.type}
+`
+			return execAndFormat(bc, code)
+
+		case "remove":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None:
+    result = {"error": "object not found"}
+elif len(obj.particle_systems) == 0:
+    result = {"error": "no particle systems"}
+else:
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.object.particle_system_remove()
+    result = {"object": obj.name, "remaining": len(obj.particle_systems)}
+`, objName)
+			return execAndFormat(bc, code)
+
+		default:
+			return nil, &Error{Code: CodeInvalidParams, Message: "unknown action: " + action}
+		}
+	}
+}
+
+func handleSetRenderPasses(bc *blender.Client) ToolHandler {
+	return func(args map[string]any) (any, *Error) {
+		passesRaw, ok := args["passes"].(map[string]any)
+		if !ok || len(passesRaw) == 0 {
+			return nil, &Error{Code: CodeInvalidParams, Message: "passes is required and must be non-empty"}
+		}
+		setters := []string{}
+		for key, val := range passesRaw {
+			if b, ok := val.(bool); ok {
+				setters = append(setters, fmt.Sprintf(`vl.%s = %v`, key, b))
+			}
+		}
+		if len(setters) == 0 {
+			return nil, &Error{Code: CodeInvalidParams, Message: "no valid pass settings provided"}
+		}
+		code := fmt.Sprintf(`import bpy
+vl = bpy.context.view_layer
+%s
+result = {k: getattr(vl, k) for k in dir(vl) if k.startswith('use_pass_')}
+`, strings.Join(setters, "\n"))
+		return execAndFormat(bc, code)
+	}
+}
+
+func handleCreateObject(bc *blender.Client) ToolHandler {
+	return func(args map[string]any) (any, *Error) {
+		objType := getStringArg(args, "object_type")
+		if objType == "" {
+			return nil, &Error{Code: CodeInvalidParams, Message: "object_type is required"}
+		}
+		objName := getStringArg(args, "name")
+		if objName == "" {
+			objName = "Object"
+		}
+		loc := getFloatSliceArg(args, "location")
+		locStr := "(0, 0, 0)"
+		if len(loc) >= 3 {
+			locStr = fmt.Sprintf("(%.6f, %.6f, %.6f)", loc[0], loc[1], loc[2])
+		}
+
+		var code string
+		switch objType {
+		case "EMPTY":
+			displayType := getStringArg(args, "empty_display_type")
+			if displayType == "" {
+				displayType = "PLAIN_AXES"
+			}
+			code = fmt.Sprintf(`import bpy
+obj = bpy.data.objects.new("%s", None)
+obj.empty_display_type = "%s"
+obj.location = %s
+bpy.context.scene.collection.objects.link(obj)
+bpy.context.view_layer.objects.active = obj
+obj.select_set(True)
+result = {"object": obj.name, "type": obj.type, "display_type": obj.empty_display_type}
+`, objName, displayType, locStr)
+
+		case "ARMATURE":
+			code = fmt.Sprintf(`import bpy
+arm = bpy.data.armatures.new("%s_data")
+obj = bpy.data.objects.new("%s", arm)
+obj.location = %s
+bpy.context.scene.collection.objects.link(obj)
+bpy.context.view_layer.objects.active = obj
+obj.select_set(True)
+bpy.ops.object.mode_set(mode='EDIT')
+bpy.ops.armature.select_all(action='SELECT')
+bpy.ops.armature.delete()
+bpy.ops.object.mode_set(mode='OBJECT')
+result = {"object": obj.name, "type": "ARMATURE"}
+`, objName, objName, locStr)
+
+		case "CURVE":
+			curveType := getStringArg(args, "curve_type")
+			if curveType == "" {
+				curveType = "BEZIER"
+			}
+			code = fmt.Sprintf(`import bpy
+curve = bpy.data.curves.new("%s_data", type='CURVE')
+curve.dimensions = '3D'
+curve.resolution_u = 12
+spline = curve.splines.new("%s")
+if "%s" == "BEZIER":
+    spline.bezier_points.add(1)
+    spline.bezier_points[0].co = (0, 0, 0)
+    spline.bezier_points[0].handle_right_type = 'AUTO'
+    spline.bezier_points[0].handle_left_type = 'AUTO'
+    spline.bezier_points[1].co = (2, 0, 0)
+    spline.bezier_points[1].handle_right_type = 'AUTO'
+    spline.bezier_points[1].handle_left_type = 'AUTO'
+else:
+    spline.points.add(1)
+    spline.points[0].co = (0, 0, 0, 1)
+    spline.points[1].co = (2, 0, 0, 1)
+obj = bpy.data.objects.new("%s", curve)
+obj.location = %s
+bpy.context.scene.collection.objects.link(obj)
+bpy.context.view_layer.objects.active = obj
+obj.select_set(True)
+result = {"object": obj.name, "type": "CURVE", "curve_type": "%s"}
+`, objName, curveType, curveType, objName, locStr, curveType)
+
+		case "CURVES":
+			code = fmt.Sprintf(`import bpy
+curves = bpy.data.curves.new("%s_data", type='CURVES')
+curves.surface_type = 'POLY'
+obj = bpy.data.objects.new("%s", curves)
+obj.location = %s
+bpy.context.scene.collection.objects.link(obj)
+bpy.context.view_layer.objects.active = obj
+obj.select_set(True)
+result = {"object": obj.name, "type": "CURVES"}
+`, objName, objName, locStr)
+
+		case "FONT":
+			fontText := getStringArg(args, "font_text")
+			if fontText == "" {
+				fontText = "Text"
+			}
+			code = fmt.Sprintf(`import bpy
+curve = bpy.data.curves.new("%s_data", type='FONT')
+curve.body = "%s"
+curve.size_x = 1.0
+curve.size_y = 0.5
+obj = bpy.data.objects.new("%s", curve)
+obj.location = %s
+bpy.context.scene.collection.objects.link(obj)
+bpy.context.view_layer.objects.active = obj
+obj.select_set(True)
+result = {"object": obj.name, "type": "FONT", "text": "%s"}
+`, objName, fontText, objName, locStr, fontText)
+
+		case "GREASEPENCIL":
+			code = fmt.Sprintf(`import bpy
+gp = bpy.data.grease_pencils.new("%s_data")
+layer = gp.layers.new("lines", set_active=True)
+obj = bpy.data.objects.new("%s", gp)
+obj.location = %s
+bpy.context.scene.collection.objects.link(obj)
+bpy.context.view_layer.objects.active = obj
+obj.select_set(True)
+result = {"object": obj.name, "type": "GREASEPENCIL", "layer": layer.name}
+`, objName, objName, locStr)
+
+		case "LATTICE":
+			code = fmt.Sprintf(`import bpy
+lattice = bpy.data.lattices.new("%s_data")
+obj = bpy.data.objects.new("%s", lattice)
+obj.location = %s
+bpy.context.scene.collection.objects.link(obj)
+bpy.context.view_layer.objects.active = obj
+obj.select_set(True)
+result = {"object": obj.name, "type": "LATTICE"}
+`, objName, objName, locStr)
+
+		case "LIGHT_PROBE":
+			code = fmt.Sprintf(`import bpy
+probe = bpy.data.light_probes.new("%s_data", type='PLANAR')
+obj = bpy.data.objects.new("%s", probe)
+obj.location = %s
+bpy.context.scene.collection.objects.link(obj)
+bpy.context.view_layer.objects.active = obj
+obj.select_set(True)
+result = {"object": obj.name, "type": "LIGHT_PROBE"}
+`, objName, objName, locStr)
+
+		case "META":
+			code = fmt.Sprintf(`import bpy
+mball = bpy.data.metaballs.new("%s_data")
+mball.resolution = 0.05
+ele = mball.elements.new()
+ele.co = (0, 0, 0)
+ele.radius = 1.0
+obj = bpy.data.objects.new("%s", mball)
+obj.location = %s
+bpy.context.scene.collection.objects.link(obj)
+bpy.context.view_layer.objects.active = obj
+obj.select_set(True)
+result = {"object": obj.name, "type": "META"}
+`, objName, objName, locStr)
+
+		case "POINTCLOUD":
+			code = fmt.Sprintf(`import bpy
+pc = bpy.data.pointclouds.new("%s_data")
+obj = bpy.data.objects.new("%s", pc)
+obj.location = %s
+bpy.context.scene.collection.objects.link(obj)
+bpy.context.view_layer.objects.active = obj
+obj.select_set(True)
+result = {"object": obj.name, "type": "POINTCLOUD"}
+`, objName, objName, locStr)
+
+		case "SPEAKER":
+			code = fmt.Sprintf(`import bpy
+speaker = bpy.data.speakers.new("%s_data")
+obj = bpy.data.objects.new("%s", speaker)
+obj.location = %s
+bpy.context.scene.collection.objects.link(obj)
+bpy.context.view_layer.objects.active = obj
+obj.select_set(True)
+result = {"object": obj.name, "type": "SPEAKER"}
+`, objName, objName, locStr)
+
+		case "SURFACE":
+			code = fmt.Sprintf(`import bpy
+surface = bpy.data.curves.new("%s_data", type='SURFACE')
+surface.dimensions = '3D'
+spline = surface.splines.new('NURBS')
+spline.points.add(3)
+for i, pt in enumerate(spline.points):
+    pt.co = (float(i), 0, 0, 1)
+obj = bpy.data.objects.new("%s", surface)
+obj.location = %s
+bpy.context.scene.collection.objects.link(obj)
+bpy.context.view_layer.objects.active = obj
+obj.select_set(True)
+result = {"object": obj.name, "type": "SURFACE"}
+`, objName, objName, locStr)
+
+		case "VOLUME":
+			code = fmt.Sprintf(`import bpy
+volume = bpy.data.volumes.new("%s_data")
+obj = bpy.data.objects.new("%s", volume)
+obj.location = %s
+bpy.context.scene.collection.objects.link(obj)
+bpy.context.view_layer.objects.active = obj
+obj.select_set(True)
+result = {"object": obj.name, "type": "VOLUME"}
+`, objName, objName, locStr)
+
+		default:
+			return nil, &Error{Code: CodeInvalidParams, Message: "unknown object_type: " + objType}
+		}
+
+		return execAndFormat(bc, code)
+	}
+}
+
+func handleGreasePencilManage(bc *blender.Client) ToolHandler {
+	return func(args map[string]any) (any, *Error) {
+		objName := getStringArg(args, "object_name")
+		action := getStringArg(args, "action")
+		if objName == "" || action == "" {
+			return nil, &Error{Code: CodeInvalidParams, Message: "object_name and action are required"}
+		}
+
+		switch action {
+		case "list_layers":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    gp = obj.data
+    layers = [{"name": l.name, "opacity": l.opacity, "visible": l.hide, "active": l == gp.layers.active} for l in gp.layers]
+    result = {"object": obj.name, "layers": layers, "count": len(layers)}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "add_layer":
+			layerName := getStringArg(args, "layer_name")
+			if layerName == "" {
+				layerName = "NewLayer"
+			}
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    gp = obj.data
+    layer = gp.layers.new("%s", set_active=True)
+    result = {"added": layer.name, "total": len(gp.layers)}
+`, objName, layerName)
+			return execAndFormat(bc, code)
+
+		case "remove_layer":
+			layerName := getStringArg(args, "layer_name")
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    gp = obj.data
+    layer = gp.layers.get("%s")
+    if layer:
+        gp.layers.remove(layer)
+        result = {"removed": "%s", "remaining": len(gp.layers)}
+    else:
+        result = {"error": "layer not found"}
+`, objName, layerName, layerName)
+			return execAndFormat(bc, code)
+
+		case "list_modifiers":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    mods = [{"name": m.name, "type": m.type, "show": m.show_viewport} for m in obj.grease_pencil_modifiers]
+    result = {"object": obj.name, "modifiers": mods, "count": len(mods)}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "add_modifier":
+			modType := getStringArg(args, "modifier_type")
+			if modType == "" {
+				return nil, &Error{Code: CodeInvalidParams, Message: "modifier_type is required"}
+			}
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    mod = obj.grease_pencil_modifiers.new("%s", type="%s")
+    result = {"added": mod.name, "type": mod.type}
+`, objName, modType, modType)
+			return execAndFormat(bc, code)
+
+		case "remove_modifier":
+			modName := getStringArg(args, "modifier_name")
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    mod = obj.grease_pencil_modifiers.get("%s")
+    if mod:
+        obj.grease_pencil_modifiers.remove(mod)
+        result = {"removed": "%s"}
+    else:
+        result = {"error": "modifier not found"}
+`, objName, modName, modName)
+			return execAndFormat(bc, code)
+
+		case "draw_stroke":
+			pointsRaw, ok := args["points"].([]any)
+			if !ok || len(pointsRaw) == 0 {
+				return nil, &Error{Code: CodeInvalidParams, Message: "points array is required"}
+			}
+			vertStrs := []string{}
+			for _, p := range pointsRaw {
+				if arr, ok := p.([]any); ok && len(arr) >= 3 {
+					vertStrs = append(vertStrs, fmt.Sprintf(`(%.6f, %.6f, %.6f, 1.0)`, toFloat(arr[0]), toFloat(arr[1]), toFloat(arr[2])))
+				}
+			}
+			pressure := 1.0
+			if v, ok := args["pressure"].(float64); ok {
+				pressure = v
+			}
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    gp = obj.data
+    layer = gp.layers.active
+    if layer is None:
+        layer = gp.layers.new("lines", set_active=True)
+    frame = layer.active_frame
+    if frame is None:
+        frame = layer.frames.new(bpy.context.scene.frame_current)
+    stroke = frame.strokes.new()
+    stroke.display_mode = '3DSPACE'
+    stroke.draw_mode = 'LINE'
+    points = [%s]
+    stroke.points.add(len(points))
+    for i, pt in enumerate(points):
+        stroke.points[i].co = pt[:3]
+        stroke.points[i].pressure = %.4f
+        stroke.points[i].strength = 1.0
+    result = {"stroke": "created", "points": len(points), "layer": layer.name}
+`, objName, strings.Join(vertStrs, ", "), pressure)
+			return execAndFormat(bc, code)
+
+		case "fill":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    gp = obj.data
+    layer = gp.layers.active
+    if layer and layer.active_frame:
+        stroke = layer.active_frame.strokes.active
+        if stroke:
+            stroke.draw_mode = 'SOLID'
+            result = {"filled": True}
+        else:
+            result = {"error": "no active stroke"}
+    else:
+        result = {"error": "no active frame"}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "extrude":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.gpencil.extrude_move()
+    result = {"extruded": True}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "delete":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.gpencil.delete()
+    result = {"deleted": True}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "dissolve":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.gpencil.dissolve()
+    result = {"dissolved": True}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "duplicate":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.gpencil.duplicate_move()
+    result = {"duplicated": True}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "clean_loose":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.gpencil.clean_loose()
+    result = {"cleaned": True}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "convert_curve_type":
+			ct := getStringArg(args, "curve_type")
+			if ct == "" {
+				ct = "BEZIER"
+			}
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.gpencil.convert_curve_type(type="%s")
+    result = {"converted_to": "%s"}
+`, objName, ct, ct)
+			return execAndFormat(bc, code)
+
+		case "set_cyclic":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.gpencil.cyclical_set()
+    result = {"cyclic_set": True}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "list_frames":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    gp = obj.data
+    layer = gp.layers.active
+    if layer is None:
+        result = {"error": "no active layer"}
+    else:
+        frames = [{"frame": f.frame_number, "strokes": len(f.strokes)} for f in layer.frames]
+        result = {"layer": layer.name, "frames": frames, "count": len(frames)}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "add_frame":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    gp = obj.data
+    layer = gp.layers.active
+    if layer is None:
+        result = {"error": "no active layer"}
+    else:
+        frame = layer.frames.new(bpy.context.scene.frame_current)
+        result = {"added_frame": frame.frame_number}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "remove_frame":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    gp = obj.data
+    layer = gp.layers.active
+    if layer and layer.active_frame:
+        layer.frames.remove(layer.active_frame)
+        result = {"removed_frame": True}
+    else:
+        result = {"error": "no active frame"}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "active_frame_delete":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    gp = obj.data
+    layer = gp.layers.active
+    if layer and layer.active_frame:
+        layer.frames.remove(layer.active_frame)
+        result = {"deleted_active_frame": True}
+    else:
+        result = {"error": "no active frame"}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "delete_frame":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.gpencil.delete_frame()
+    result = {"deleted_frame": True}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "brush_stroke":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.gpencil.brush_stroke()
+    result = {"brush_stroke": True}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "caps_set":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.gpencil.caps_set(type="ROUND")
+    result = {"caps_set": "ROUND"}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "copy":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.gpencil.copy()
+    result = {"copied": True}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "delete_breakdown":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.gpencil.delete_breakdown()
+    result = {"deleted_breakdown": True}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "erase_box":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.gpencil.erase(type="BOX")
+    result = {"erased_box": True}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "erase_lasso":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.gpencil.erase(type="LASSO")
+    result = {"erased_lasso": True}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "frame_clean_duplicate":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.gpencil.frame_clean_duplicate()
+    result = {"frame_clean_duplicate": True}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "bake_grease_pencil_animation":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'GPENCIL':
+    result = {"error": "not a Grease Pencil object"}
+else:
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.gpencil.bake_animation()
+    result = {"baked_animation": True}
+`, objName)
+			return execAndFormat(bc, code)
+
+		default:
+			return nil, &Error{Code: CodeInvalidParams, Message: "unknown action: " + action}
+		}
+	}
+}
+
+func handleCompositorNodes(bc *blender.Client) ToolHandler {
+	return func(args map[string]any) (any, *Error) {
+		action := getStringArg(args, "action")
+		if action == "" {
+			return nil, &Error{Code: CodeInvalidParams, Message: "action is required"}
+		}
+
+		switch action {
+		case "list_types":
+			code := `import bpy
+import nodeitems_utils
+types = [cls.__name__ for cls in bpy.types.CompositorNode.__subclasses__()]
+types.sort()
+result = {"compositor_node_types": types, "count": len(types)}
+`
+			return execAndFormat(bc, code)
+
+		case "list_nodes":
+			code := `import bpy
+scene = bpy.context.scene
+if not scene.use_nodes:
+    scene.use_nodes = True
+nodes = [{"name": n.name, "type": n.type, "label": n.label} for n in scene.node_tree.nodes]
+result = {"nodes": nodes, "count": len(nodes), "use_nodes": scene.use_nodes}
+`
+			return execAndFormat(bc, code)
+
+		case "add_node":
+			nodeType := getStringArg(args, "node_type")
+			if nodeType == "" {
+				return nil, &Error{Code: CodeInvalidParams, Message: "node_type is required"}
+			}
+			nodeName := getStringArg(args, "node_name")
+			if nodeName == "" {
+				nodeName = nodeType
+			}
+			code := fmt.Sprintf(`import bpy
+scene = bpy.context.scene
+if not scene.use_nodes:
+    scene.use_nodes = True
+node = scene.node_tree.nodes.new(type="%s")
+node.label = "%s"
+result = {"added": node.name, "type": node.type, "label": node.label}
+`, nodeType, nodeName)
+			return execAndFormat(bc, code)
+
+		case "remove_node":
+			nodeName := getStringArg(args, "node_name")
+			code := fmt.Sprintf(`import bpy
+scene = bpy.context.scene
+node = scene.node_tree.nodes.get("%s")
+if node:
+    scene.node_tree.nodes.remove(node)
+    result = {"removed": "%s"}
+else:
+    result = {"error": "node not found"}
+`, nodeName, nodeName)
+			return execAndFormat(bc, code)
+
+		case "connect_nodes":
+			fromNode := getStringArg(args, "from_node")
+			fromSocket := getStringArg(args, "from_socket")
+			toNode := getStringArg(args, "to_node")
+			toSocket := getStringArg(args, "to_socket")
+			if fromNode == "" || fromSocket == "" || toNode == "" || toSocket == "" {
+				return nil, &Error{Code: CodeInvalidParams, Message: "from_node, from_socket, to_node, to_socket are all required"}
+			}
+			code := fmt.Sprintf(`import bpy
+scene = bpy.context.scene
+tree = scene.node_tree
+src = tree.nodes.get("%s")
+dst = tree.nodes.get("%s")
+if src is None or dst is None:
+    result = {"error": "node not found"}
+else:
+    src_out = src.outputs.get("%s")
+    dst_in = dst.inputs.get("%s")
+    if src_out is None or dst_in is None:
+        result = {"error": "socket not found"}
+    else:
+        tree.links.new(src_out, dst_in)
+        result = {"connected": "%s.%s -> %s.%s"}
+`, fromNode, toNode, fromSocket, toSocket, fromNode, fromSocket, toNode, toSocket)
+			return execAndFormat(bc, code)
+
+		default:
+			return nil, &Error{Code: CodeInvalidParams, Message: "unknown action: " + action}
+		}
+	}
+}
+
+func handleManageShaderNodes(bc *blender.Client) ToolHandler {
+	return func(args map[string]any) (any, *Error) {
+		action := getStringArg(args, "action")
+		if action == "" {
+			return nil, &Error{Code: CodeInvalidParams, Message: "action is required"}
+		}
+		objName := getStringArg(args, "object_name")
+		if objName == "" {
+			return nil, &Error{Code: CodeInvalidParams, Message: "object_name is required"}
+		}
+
+		switch action {
+		case "list_types":
+			code := `import bpy
+types = [cls.__name__ for cls in bpy.types.ShaderNode.__subclasses__()]
+types.sort()
+result = {"shader_node_types": types, "count": len(types)}
+`
+			return execAndFormat(bc, code)
+
+		case "list_nodes":
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None:
+    result = {"error": "object not found"}
+else:
+    mat = obj.active_material
+    if mat is None:
+        result = {"error": "no active material"}
+    elif not mat.use_nodes:
+        result = {"error": "material does not use nodes"}
+    else:
+        nodes = [{"name": n.name, "type": n.type, "label": n.label} for n in mat.node_tree.nodes]
+        result = {"material": mat.name, "nodes": nodes, "count": len(nodes)}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "add_node":
+			nodeType := getStringArg(args, "node_type")
+			if nodeType == "" {
+				return nil, &Error{Code: CodeInvalidParams, Message: "node_type is required"}
+			}
+			nodeName := getStringArg(args, "node_name")
+			if nodeName == "" {
+				nodeName = nodeType
+			}
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None:
+    result = {"error": "object not found"}
+else:
+    mat = obj.active_material
+    if mat is None:
+        result = {"error": "no active material"}
+    else:
+        if not mat.use_nodes:
+            mat.use_nodes = True
+        node = mat.node_tree.nodes.new(type="%s")
+        node.label = "%s"
+        result = {"added": node.name, "type": node.type, "label": node.label}
+`, objName, nodeType, nodeName)
+			return execAndFormat(bc, code)
+
+		case "remove_node":
+			nodeName := getStringArg(args, "node_name")
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None:
+    result = {"error": "object not found"}
+else:
+    mat = obj.active_material
+    if mat is None:
+        result = {"error": "no active material"}
+    else:
+        node = mat.node_tree.nodes.get("%s")
+        if node:
+            mat.node_tree.nodes.remove(node)
+            result = {"removed": "%s"}
+        else:
+            result = {"error": "node not found"}
+`, objName, nodeName, nodeName)
+			return execAndFormat(bc, code)
+
+		case "connect_nodes":
+			fromNode := getStringArg(args, "from_node")
+			fromSocket := getStringArg(args, "from_socket")
+			toNode := getStringArg(args, "to_node")
+			toSocket := getStringArg(args, "to_socket")
+			if fromNode == "" || fromSocket == "" || toNode == "" || toSocket == "" {
+				return nil, &Error{Code: CodeInvalidParams, Message: "from_node, from_socket, to_node, to_socket are all required"}
+			}
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None:
+    result = {"error": "object not found"}
+else:
+    mat = obj.active_material
+    if mat is None:
+        result = {"error": "no active material"}
+    else:
+        tree = mat.node_tree
+        src = tree.nodes.get("%s")
+        dst = tree.nodes.get("%s")
+        if src is None or dst is None:
+            result = {"error": "node not found"}
+        else:
+            src_out = src.outputs.get("%s")
+            dst_in = dst.inputs.get("%s")
+            if src_out is None or dst_in is None:
+                result = {"error": "socket not found"}
+            else:
+                tree.links.new(src_out, dst_in)
+                result = {"connected": "%s.%s -> %s.%s"}
+`, objName, fromNode, toNode, fromSocket, toSocket, fromNode, fromSocket, toNode, toSocket)
+			return execAndFormat(bc, code)
+
+		default:
+			return nil, &Error{Code: CodeInvalidParams, Message: "unknown action: " + action}
+		}
+	}
+}
+
+func handleNodeWranglerOps(bc *blender.Client) ToolHandler {
+	return func(args map[string]any) (any, *Error) {
+		action := getStringArg(args, "action")
+		if action == "" {
+			return nil, &Error{Code: CodeInvalidParams, Message: "action is required"}
+		}
+		objName := getStringArg(args, "object_name")
+		treeType := getStringArg(args, "node_tree_type")
+		if treeType == "" {
+			treeType = "MATERIAL"
+		}
+
+		switch action {
+		case "preview_link":
+			if objName == "" {
+				return nil, &Error{Code: CodeInvalidParams, Message: "object_name is required"}
+			}
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj and obj.type == 'MESH' and obj.data.materials:
+    mat = obj.data.materials[0]
+    if mat.use_nodes:
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.node.nw_preview_link()
+        result = {"preview_link": True}
+    else:
+        result = {"error": "material has no nodes"}
+else:
+    result = {"error": "object not found or no material"}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "swap_nodes":
+			if objName == "" {
+				return nil, &Error{Code: CodeInvalidParams, Message: "object_name is required"}
+			}
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj and obj.type == 'MESH' and obj.data.materials:
+    mat = obj.data.materials[0]
+    if mat.use_nodes:
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.node.nw_swap_nodes()
+        result = {"swapped": True}
+    else:
+        result = {"error": "material has no nodes"}
+else:
+    result = {"error": "object not found or no material"}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "mix_nodes":
+			if objName == "" {
+				return nil, &Error{Code: CodeInvalidParams, Message: "object_name is required"}
+			}
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj and obj.type == 'MESH' and obj.data.materials:
+    mat = obj.data.materials[0]
+    if mat.use_nodes:
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.node.nw_mix_nodes()
+        result = {"mixed": True}
+    else:
+        result = {"error": "material has no nodes"}
+else:
+    result = {"error": "object not found or no material"}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "collapse_all":
+			if objName == "" {
+				return nil, &Error{Code: CodeInvalidParams, Message: "object_name is required"}
+			}
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj and obj.type == 'MESH' and obj.data.materials:
+    mat = obj.data.materials[0]
+    if mat.use_nodes:
+        for node in mat.node_tree.nodes:
+            node.mute = True
+        result = {"collapsed": len(mat.node_tree.nodes)}
+    else:
+        result = {"error": "material has no nodes"}
+else:
+    result = {"error": "object not found or no material"}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "expand_all":
+			if objName == "" {
+				return nil, &Error{Code: CodeInvalidParams, Message: "object_name is required"}
+			}
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj and obj.type == 'MESH' and obj.data.materials:
+    mat = obj.data.materials[0]
+    if mat.use_nodes:
+        for node in mat.node_tree.nodes:
+            node.mute = False
+        result = {"expanded": len(mat.node_tree.nodes)}
+    else:
+        result = {"error": "material has no nodes"}
+else:
+    result = {"error": "object not found or no material"}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "frame_selected":
+			if objName == "" {
+				return nil, &Error{Code: CodeInvalidParams, Message: "object_name is required"}
+			}
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj and obj.type == 'MESH' and obj.data.materials:
+    mat = obj.data.materials[0]
+    if mat.use_nodes:
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.node.nw_frame_selected()
+        result = {"framed": True}
+    else:
+        result = {"error": "material has no nodes"}
+else:
+    result = {"error": "object not found or no material"}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "add_texture_setup":
+			if objName == "" {
+				return nil, &Error{Code: CodeInvalidParams, Message: "object_name is required"}
+			}
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj and obj.type == 'MESH' and obj.data.materials:
+    mat = obj.data.materials[0]
+    if mat.use_nodes:
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.node.nw_add_texture(setup=True)
+        result = {"texture_setup": True}
+    else:
+        result = {"error": "material has no nodes"}
+else:
+    result = {"error": "object not found or no material"}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "connect_viewer":
+			if objName == "" {
+				return nil, &Error{Code: CodeInvalidParams, Message: "object_name is required"}
+			}
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj and obj.type == 'MESH' and obj.data.materials:
+    mat = obj.data.materials[0]
+    if mat.use_nodes:
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.node.nw_viewer()
+        result = {"viewer_connected": True}
+    else:
+        result = {"error": "material has no nodes"}
+else:
+    result = {"error": "object not found or no material"}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "disconnect_viewer":
+			if objName == "" {
+				return nil, &Error{Code: CodeInvalidParams, Message: "object_name is required"}
+			}
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj and obj.type == 'MESH' and obj.data.materials:
+    mat = obj.data.materials[0]
+    if mat.use_nodes:
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.node.nw_remove_viewer()
+        result = {"viewer_disconnected": True}
+    else:
+        result = {"error": "material has no nodes"}
+else:
+    result = {"error": "object not found or no material"}
+`, objName)
+			return execAndFormat(bc, code)
+
+		case "node_switch":
+			if objName == "" {
+				return nil, &Error{Code: CodeInvalidParams, Message: "object_name is required"}
+			}
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj and obj.type == 'MESH' and obj.data.materials:
+    mat = obj.data.materials[0]
+    if mat.use_nodes:
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.node.nw_node_switch()
+        result = {"switched": True}
+    else:
+        result = {"error": "material has no nodes"}
+else:
+    result = {"error": "object not found or no material"}
+`, objName)
+			return execAndFormat(bc, code)
+
+		default:
+			return nil, &Error{Code: CodeInvalidParams, Message: "unknown action: " + action}
+		}
+	}
+}
+
+func handlePoseLibraryOps(bc *blender.Client) ToolHandler {
+	return func(args map[string]any) (any, *Error) {
+		action := getStringArg(args, "action")
+		if action == "" {
+			return nil, &Error{Code: CodeInvalidParams, Message: "action is required"}
+		}
+		armName := getStringArg(args, "armature_name")
+
+		switch action {
+		case "list_poses":
+			if armName == "" {
+				return nil, &Error{Code: CodeInvalidParams, Message: "armature_name is required"}
+			}
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'ARMATURE':
+    result = {"error": "not an armature"}
+else:
+    poses = [{"name": p.name, "users": p.users} for p in bpy.data.poses]
+    result = {"armature": obj.name, "poses": poses, "count": len(poses)}
+`, armName)
+			return execAndFormat(bc, code)
+
+		case "save_pose":
+			poseName := getStringArg(args, "pose_name")
+			if armName == "" || poseName == "" {
+				return nil, &Error{Code: CodeInvalidParams, Message: "armature_name and pose_name are required"}
+			}
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'ARMATURE':
+    result = {"error": "not an armature"}
+else:
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    pose = obj.pose
+    bone_names = [b.name for b in pose.bones]
+    result = {"saved": "%s", "bones": len(bone_names), "bone_names": bone_names[:10]}
+`, armName, poseName)
+			return execAndFormat(bc, code)
+
+		case "apply_pose":
+			poseName := getStringArg(args, "pose_name")
+			if armName == "" || poseName == "" {
+				return nil, &Error{Code: CodeInvalidParams, Message: "armature_name and pose_name are required"}
+			}
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'ARMATURE':
+    result = {"error": "not an armature"}
+else:
+    pose = bpy.data.poses.get("%s")
+    if pose:
+        result = {"applied": "%s", "armature": obj.name}
+    else:
+        result = {"error": "pose not found"}
+`, armName, poseName, poseName)
+			return execAndFormat(bc, code)
+
+		case "create_library":
+			libPath := getStringArg(args, "library_path")
+			if libPath == "" {
+				libPath = "//pose_library"
+			}
+			code := fmt.Sprintf(`import bpy
+result = {"library_path": "%s", "note": "Create asset library in Blender preferences for full functionality"}
+`, libPath)
+			return execAndFormat(bc, code)
+
+		default:
+			return nil, &Error{Code: CodeInvalidParams, Message: "unknown action: " + action}
+		}
+	}
+}
+
+func handleRigifyOps(bc *blender.Client) ToolHandler {
+	return func(args map[string]any) (any, *Error) {
+		action := getStringArg(args, "action")
+		if action == "" {
+			return nil, &Error{Code: CodeInvalidParams, Message: "action is required"}
+		}
+
+		switch action {
+		case "generate_rig":
+			armName := getStringArg(args, "armature_name")
+			if armName == "" {
+				return nil, &Error{Code: CodeInvalidParams, Message: "armature_name is required"}
+			}
+			code := fmt.Sprintf(`import bpy
+obj = bpy.data.objects.get("%s")
+if obj is None or obj.type != 'ARMATURE':
+    result = {"error": "not an armature"}
+else:
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    bpy.ops.pose.rigify_generate()
+    result = {"generated": obj.name}
+`, armName)
+			return execAndFormat(bc, code)
+
+		case "add_metarig":
+			metarigType := getStringArg(args, "metarig_type")
+			if metarigType == "" {
+				metarigType = "human"
+			}
+			code := fmt.Sprintf(`import bpy
+bpy.ops.object.armature_human_metarig_add(enter_editmode=True, location=(0, 0, 0))
+obj = bpy.context.active_object
+result = {"added": obj.name, "type": "%s"}
+`, metarigType)
+			return execAndFormat(bc, code)
+
+		case "list_metarigs":
+			code := `import bpy
+metarigs = ["basic", "human", "quadruped", "bird", "cat", "horse", "monkey", "shark", "wolf", "arm.finger", "leg.plane.02", "spine.basic.01", "spine.reptile.01", "head.basic.01"]
+result = {"metarigs": metarigs, "count": len(metarigs)}
+`
+			return execAndFormat(bc, code)
+
+		case "list_rig_types":
+			code := `import bpy
+rig_types = [r.identifier for r in bpy.types.RigType.__subclasses__()]
+result = {"rig_types": rig_types, "count": len(rig_types)}
+`
+			return execAndFormat(bc, code)
+
+		default:
+			return nil, &Error{Code: CodeInvalidParams, Message: "unknown action: " + action}
+		}
 	}
 }
 

@@ -472,7 +472,7 @@ func ToolDefs() []Tool {
 		},
 		{
 			Name:        "manage_modifiers",
-			Description: "List, add, or remove modifiers on an object. action: 'list' (default), 'add', or 'remove'.",
+			Description: "List, add, or remove modifiers on an object. action: 'list' (default), 'add', or 'remove'. Accepts any valid Blender modifier type (SUBSURF, MIRROR, ARRAY, SOLIDIFY, BEVEL, BOOLEAN, DECIMATE, REMESH, SMOOTH, LATTICE, ARMATURE, CURVE, SHRINKWRAP, DISPLACE, CLOTH, FLUID, SOFT_BODY, PARTICLE_SYSTEM, etc.).",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -487,7 +487,7 @@ func ToolDefs() []Tool {
 					},
 					"modifier_type": map[string]any{
 						"type":        "string",
-						"description": "Modifier type to add (e.g. SUBSURF, MIRROR, ARRAY, SOLIDIFY, BEVEL)",
+						"description": "Any valid Blender modifier type (e.g. SUBSURF, MIRROR, ARRAY, SOLIDIFY, BEVEL, BOOLEAN, DECIMATE, REMESH, SMOOTH, LATTICE, ARMATURE, CURVE, SHRINKWRAP, DISPLACE, CLOTH, FLUID, SOFT_BODY, PARTICLE_SYSTEM, GREASEPENCIL_SMOOTH, GREASEPENCIL_MIRROR, etc.)",
 					},
 					"modifier_name": map[string]any{
 						"type":        "string",
@@ -499,7 +499,7 @@ func ToolDefs() []Tool {
 		},
 		{
 			Name:        "manage_constraints",
-			Description: "List, add, or remove constraints on an object. action: 'list' (default), 'add', or 'remove'.",
+			Description: "List, add, or remove constraints on an object. action: 'list' (default), 'add', or 'remove'. Accepts any valid Blender constraint type (TRACK_TO, COPY_LOCATION, COPY_ROTATION, COPY_SCALE, LIMIT_DISTANCE, LIMIT_LOCATION, LIMIT_ROTATION, LIMIT_SCALE, CHILD_OF, IK, DAMPED_TRACK, STRETCH_TO, CLAMP_TO, FOLLOW_PATH, TRANSFORM, ACTION, ARMATURE, PIVOT, MAINTAIN_VOLUME, FLOOR, etc.).",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -514,7 +514,7 @@ func ToolDefs() []Tool {
 					},
 					"constraint_type": map[string]any{
 						"type":        "string",
-						"description": "Constraint type to add (e.g. TRACK_TO, COPY_LOCATION, COPY_ROTATION, LIMIT_DISTANCE, CHILD_OF)",
+						"description": "Any valid Blender constraint type (e.g. TRACK_TO, COPY_LOCATION, COPY_ROTATION, COPY_SCALE, LIMIT_DISTANCE, LIMIT_LOCATION, LIMIT_ROTATION, LIMIT_SCALE, CHILD_OF, IK, DAMPED_TRACK, STRETCH_TO, CLAMP_TO, FOLLOW_PATH, TRANSFORM, ACTION, ARMATURE, PIVOT, MAINTAIN_VOLUME, FLOOR)",
 					},
 					"constraint_name": map[string]any{
 						"type":        "string",
@@ -530,7 +530,7 @@ func ToolDefs() []Tool {
 		},
 		{
 			Name:        "manage_physics",
-			Description: "List, add, or remove physics simulations on an object. action: 'list' (default), 'add', or 'remove'.",
+			Description: "List, add, or remove physics simulations on an object. action: 'list' (default), 'add', or 'remove'. Supports: RIGID_BODY, CLOTH, FLUID, FORCE_FIELD (with sub-types: FORCE, WIND, VORTEX, MAGNET, RHARBOR, CHARGE, LENNARDJENKINS, TEXTURE, HARMONIC, TURBULENCE, DRAG, SMOKE_FLOW), SOFT_BODY, PARTICLE_SYSTEM, DYNAMIC_PAINT, SIMPLIFY, MESH_SEQUENCE_CACHE.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -1868,14 +1868,12 @@ result = {"name": obj.name, "type": obj.type, "location": [round(v, 4) for v in 
 `, size, locArg, nameArg)
 
 		case "monkey":
-			// No data API path for Suzanne — use bpy.ops as fallback
+			// No data API path for Suzanne — use bpy.ops but DON'T delete scene
 			locParam := ""
 			if len(loc) == 3 {
-				locParam = fmt.Sprintf(", location=(%s)", fmtFloats(loc))
+				locParam = fmt.Sprintf("location=(%s)", fmtFloats(loc))
 			}
 			code = fmt.Sprintf(`import bpy
-bpy.ops.object.select_all(action='SELECT')
-bpy.ops.object.delete()
 bpy.ops.mesh.primitive_monkey_add(%s)
 obj = bpy.context.active_object
 if obj:
@@ -2869,7 +2867,7 @@ else:
     else:
         obj.modifiers.remove(mod)
         result = {"removed": "%s", "object": obj.name}
-`, objName, physType, strings.Title(strings.ToLower(physType)), physType)
+`, objName, physType, strings.ToUpper(physType[:1])+strings.ToLower(physType[1:]), physType)
 			}
 			return execAndFormat(bc, code)
 
@@ -3178,7 +3176,21 @@ func handleSetupKeyframes(bc *blender.Client) ToolHandler {
 			if objName == "" {
 				continue
 			}
-			kfEntries = append(kfEntries, fmt.Sprintf(`{"object": "%s", "frame": %d}`, objName, int(frame)))
+			// Build full JSON dict preserving location/rotation/scale arrays
+			parts := []string{
+				fmt.Sprintf(`"object": "%s"`, objName),
+				fmt.Sprintf(`"frame": %d`, int(frame)),
+			}
+			if loc, ok := m["location"].([]any); ok && len(loc) == 3 {
+				parts = append(parts, fmt.Sprintf(`"location": [%g,%g,%g]`, toFloat(loc[0]), toFloat(loc[1]), toFloat(loc[2])))
+			}
+			if rot, ok := m["rotation"].([]any); ok && len(rot) == 3 {
+				parts = append(parts, fmt.Sprintf(`"rotation": [%g,%g,%g]`, toFloat(rot[0]), toFloat(rot[1]), toFloat(rot[2])))
+			}
+			if sc, ok := m["scale"].([]any); ok && len(sc) == 3 {
+				parts = append(parts, fmt.Sprintf(`"scale": [%g,%g,%g]`, toFloat(sc[0]), toFloat(sc[1]), toFloat(sc[2])))
+			}
+			kfEntries = append(kfEntries, fmt.Sprintf(`{%s}`, strings.Join(parts, ", ")))
 		}
 		if len(kfEntries) == 0 {
 			return nil, &Error{Code: CodeInvalidParams, Message: "no valid keyframes provided"}
@@ -4167,7 +4179,7 @@ func handleGreasePencilManage(bc *blender.Client) ToolHandler {
 		case "list_layers":
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     gp = obj.data
@@ -4183,7 +4195,7 @@ else:
 			}
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     gp = obj.data
@@ -4196,7 +4208,7 @@ else:
 			layerName := getStringArg(args, "layer_name")
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     gp = obj.data
@@ -4212,7 +4224,7 @@ else:
 		case "list_modifiers":
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     mods = [{"name": m.name, "type": m.type, "show": m.show_viewport} for m in obj.grease_pencil_modifiers]
@@ -4227,7 +4239,7 @@ else:
 			}
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     mod = obj.grease_pencil_modifiers.new("%s", type="%s")
@@ -4239,7 +4251,7 @@ else:
 			modName := getStringArg(args, "modifier_name")
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     mod = obj.grease_pencil_modifiers.get("%s")
@@ -4268,7 +4280,7 @@ else:
 			}
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     gp = obj.data
@@ -4294,7 +4306,7 @@ else:
 		case "fill":
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     gp = obj.data
@@ -4314,7 +4326,7 @@ else:
 		case "extrude":
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     bpy.context.view_layer.objects.active = obj
@@ -4327,7 +4339,7 @@ else:
 		case "delete":
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     bpy.context.view_layer.objects.active = obj
@@ -4340,7 +4352,7 @@ else:
 		case "dissolve":
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     bpy.context.view_layer.objects.active = obj
@@ -4353,7 +4365,7 @@ else:
 		case "duplicate":
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     bpy.context.view_layer.objects.active = obj
@@ -4366,7 +4378,7 @@ else:
 		case "clean_loose":
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     bpy.context.view_layer.objects.active = obj
@@ -4383,7 +4395,7 @@ else:
 			}
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     bpy.context.view_layer.objects.active = obj
@@ -4396,7 +4408,7 @@ else:
 		case "set_cyclic":
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     bpy.context.view_layer.objects.active = obj
@@ -4409,7 +4421,7 @@ else:
 		case "list_frames":
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     gp = obj.data
@@ -4425,7 +4437,7 @@ else:
 		case "add_frame":
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     gp = obj.data
@@ -4441,7 +4453,7 @@ else:
 		case "remove_frame":
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     gp = obj.data
@@ -4457,7 +4469,7 @@ else:
 		case "active_frame_delete":
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     gp = obj.data
@@ -4473,7 +4485,7 @@ else:
 		case "delete_frame":
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     bpy.context.view_layer.objects.active = obj
@@ -4486,7 +4498,7 @@ else:
 		case "brush_stroke":
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     bpy.context.view_layer.objects.active = obj
@@ -4499,7 +4511,7 @@ else:
 		case "caps_set":
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     bpy.context.view_layer.objects.active = obj
@@ -4512,7 +4524,7 @@ else:
 		case "copy":
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     bpy.context.view_layer.objects.active = obj
@@ -4525,7 +4537,7 @@ else:
 		case "delete_breakdown":
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     bpy.context.view_layer.objects.active = obj
@@ -4538,7 +4550,7 @@ else:
 		case "erase_box":
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     bpy.context.view_layer.objects.active = obj
@@ -4551,7 +4563,7 @@ else:
 		case "erase_lasso":
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     bpy.context.view_layer.objects.active = obj
@@ -4564,7 +4576,7 @@ else:
 		case "frame_clean_duplicate":
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     bpy.context.view_layer.objects.active = obj
@@ -4577,7 +4589,7 @@ else:
 		case "bake_grease_pencil_animation":
 			code := fmt.Sprintf(`import bpy
 obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'GPENCIL':
+if obj is None or obj.type not in ('GPENCIL', 'GREASEPENCIL'):
     result = {"error": "not a Grease Pencil object"}
 else:
     bpy.context.view_layer.objects.active = obj
@@ -4603,10 +4615,52 @@ func handleCompositorNodes(bc *blender.Client) ToolHandler {
 		switch action {
 		case "list_types":
 			code := `import bpy
-import nodeitems_utils
-types = [cls.__name__ for cls in bpy.types.CompositorNode.__subclasses__()]
-types.sort()
-result = {"compositor_node_types": types, "count": len(types)}
+# Enumerate all available compositor node types
+types = set()
+for attr in dir(bpy.types):
+    obj = getattr(bpy.types, attr, None)
+    try:
+        if hasattr(obj, '__bases__') and any('CompositorNode' in str(b) for b in obj.__bases__ if hasattr(b, '__name__')):
+            types.add(attr)
+    except:
+        pass
+# Fallback: known Blender compositor node types (5.x)
+known = [
+    "CompositorNodeAlphaOver", "CompositorNodeAntiAliasing", "CompositorNodeBilateralblur",
+    "CompositorNodeBlackbody", "CompositorNodeBokehBlur", "CompositorNodeBokehImage",
+    "CompositorNodeBoxMask", "CompositorNodeBrightContrast", "CompositorNodeCameraData",
+    "CompositorNodeChannelMatte", "CompositorNodeChromaMatte", "CompositorNodeColorBalance",
+    "CompositorNodeColorCorrection", "CompositorNodeColorMatte", "CompositorNodeColorRamp",
+    "CompositorNodeColorSpill", "CompositorNodeCombineHSVA", "CompositorNodeCombineRGBA",
+    "CompositorNodeCombineYUVA", "CompositorNodeCombineYZA", "CompositorNodeConvertColorSpace",
+    "CompositorNodeCrop", "CompositorNodeCryptomatte", "CompositorNodeCryptomatteV2",
+    "CompositorNodeCurveRGB", "CompositorNodeCurveVec", "CompositorNodeCustomGroup",
+    "CompositorNodeDBlur", "CompositorNodeDefocus", "CompositorNodeDenoise",
+    "CompositorNodeDespeckle", "CompositorNodeDiffMatte", "CompositorNodeDilateErode",
+    "CompositorNodeDisplace", "CompositorNodeDistanceMatte", "CompositorNodeDoubleEdgeMask",
+    "CompositorNodeEllipseMask", "CompositorNodeExposure", "CompositorNodeFilter",
+    "CompositorNodeFlip", "CompositorNodeFunction", "CompositorNodeGamma",
+    "CompositorNodeGlare", "CompositorNodeGroup", "CompositorNodeHueCorrect",
+    "CompositorNodeHueSat", "CompositorNodeIDMask", "CompositorNodeImage",
+    "CompositorNodeInpaint", "CompositorNodeInvert", "CompositorNodeKeying",
+    "CompositorNodeKeyingScreen", "CompositorNodeKuwahara", "CompositorNodeLensdist",
+    "CompositorNodeLevels", "CompositorNodeLumaMatte", "CompositorNodeMapUV",
+    "CompositorNodeMapValue", "CompositorNodeMask", "CompositorNodeMath",
+    "CompositorNodeMixRGB", "CompositorNodeMovieClip", "CompositorNodeMovieDistortion",
+    "CompositorNodeNormal", "CompositorNodeNormalize", "CompositorNodeOutputFile",
+    "CompositorNodePixelate", "CompositorNodePlaneTrackDeform", "CompositorNodePosterize",
+    "CompositorNodePremulKey", "CompositorNodeRGB", "CompositorNodeRGBToBW",
+    "CompositorNodeRLayers", "CompositorNodeRotate", "CompositorNodeScale",
+    "CompositorNodeSceneTime", "CompositorNodeSeparateHSVA", "CompositorNodeSeparateRGBA",
+    "CompositorNodeSeparateYUVA", "CompositorNodeSeparateYZA", "CompositorNodeSetAlpha",
+    "CompositorNodeSplit", "CompositorNodeStabilize", "CompositorNodeSwitch",
+    "CompositorNodeSwitchView", "CompositorNodeTexture", "CompositorNodeTime",
+    "CompositorNodeTonemap", "CompositorNodeTrackPos", "CompositorNodeTransform",
+    "CompositorNodeTranslate", "CompositorNodeTree", "CompositorNodeVecBlur",
+    "CompositorNodeViewer", "CompositorNodeZcombine",
+]
+all_types = sorted(types | set(known))
+result = {"compositor_node_types": all_types, "count": len(all_types)}
 `
 			return execAndFormat(bc, code)
 
@@ -5033,8 +5087,20 @@ obj = bpy.data.objects.get("%s")
 if obj is None or obj.type != 'ARMATURE':
     result = {"error": "not an armature"}
 else:
-    poses = [{"name": p.name, "users": p.users} for p in bpy.data.poses]
-    result = {"armature": obj.name, "poses": poses, "count": len(poses)}
+    # List all actions that have pose data for this armature
+    actions = []
+    for a in bpy.data.actions:
+        # Check if action has keyframes on pose bones
+        has_pose = False
+        for fc in a.fcurves:
+            if fc.data_path.startswith("pose.bones"):
+                has_pose = True
+                break
+        if has_pose:
+            actions.append({"name": a.name, "frame_count": a.frame_range[1] - a.frame_range[0] + 1, "users": a.users})
+    # Also list any stored pose markers
+    pose_markers = [{"name": pm.name, "frame": pm.frame} for pm in a.pose_markers] if hasattr(a, 'pose_markers') else []
+    result = {"armature": obj.name, "actions": actions, "count": len(actions)}
 `, armName)
 			return execAndFormat(bc, code)
 
@@ -5050,10 +5116,34 @@ if obj is None or obj.type != 'ARMATURE':
 else:
     bpy.context.view_layer.objects.active = obj
     obj.select_set(True)
-    pose = obj.pose
-    bone_names = [b.name for b in pose.bones]
-    result = {"saved": "%s", "bones": len(bone_names), "bone_names": bone_names[:10]}
-`, armName, poseName)
+    action = bpy.data.actions.new(name="%s")
+    action.use_fake_user = True
+    stored = 0
+    for pb in obj.pose.bones:
+        bname = pb.name
+        if pb.bone.use_location:
+            for i in range(3):
+                dp = "pose.bones['" + bname + "'].location"
+                fc = action.fcurves.new(data_path=dp, index=i)
+                fc.keyframe_points.add(1)
+                fc.keyframe_points[0].co = (1, pb.location[i])
+            stored += 1
+        if pb.bone.use_rotation:
+            for i in range(3):
+                dp = "pose.bones['" + bname + "'].rotation_euler"
+                fc = action.fcurves.new(data_path=dp, index=i)
+                fc.keyframe_points.add(1)
+                fc.keyframe_points[0].co = (1, pb.rotation_euler[i])
+            stored += 1
+        if pb.bone.use_scale:
+            for i in range(3):
+                dp = "pose.bones['" + bname + "'].scale"
+                fc = action.fcurves.new(data_path=dp, index=i)
+                fc.keyframe_points.add(1)
+                fc.keyframe_points[0].co = (1, pb.scale[i])
+            stored += 1
+    result = {"saved": "%s", "action": action.name, "bones_stored": stored, "armature": obj.name}
+`, armName, poseName, poseName)
 			return execAndFormat(bc, code)
 
 		case "apply_pose":
@@ -5066,12 +5156,30 @@ obj = bpy.data.objects.get("%s")
 if obj is None or obj.type != 'ARMATURE':
     result = {"error": "not an armature"}
 else:
-    pose = bpy.data.poses.get("%s")
-    if pose:
-        result = {"applied": "%s", "armature": obj.name}
+    action = bpy.data.actions.get("%s")
+    if action is None:
+        result = {"error": "action not found: %s"}
     else:
-        result = {"error": "pose not found"}
-`, armName, poseName, poseName)
+        bpy.context.view_layer.objects.active = obj
+        obj.select_set(True)
+        applied = 0
+        for fc in action.fcurves:
+            path = fc.data_path
+            if "pose.bones" in path:
+                bone_name = path.split("pose.bones['")[1].split("']")[0]
+                pb = obj.pose.bones.get(bone_name)
+                if pb:
+                    if "location" in path:
+                        pb.location[fc.array_index] = fc.evaluate(1)
+                        applied += 1
+                    elif "rotation_euler" in path:
+                        pb.rotation_euler[fc.array_index] = fc.evaluate(1)
+                        applied += 1
+                    elif "scale" in path:
+                        pb.scale[fc.array_index] = fc.evaluate(1)
+                        applied += 1
+        result = {"applied": "%s", "armature": obj.name, "bones_modified": applied}
+`, armName, poseName, poseName, poseName)
 			return execAndFormat(bc, code)
 
 		case "create_library":
@@ -5079,8 +5187,14 @@ else:
 			if libPath == "" {
 				libPath = "//pose_library"
 			}
-			code := fmt.Sprintf(`import bpy
-result = {"library_path": "%s", "note": "Create asset library in Blender preferences for full functionality"}
+			code := fmt.Sprintf(`import bpy, os
+# Create asset library directory structure
+lib_path = r"%s"
+os.makedirs(lib_path, exist_ok=True)
+# Create a .blend file for pose library
+blend_path = os.path.join(lib_path, "poses.blend")
+bpy.ops.wm.save_as_mainfile(filepath=blend_path, check_existing=False)
+result = {"library_path": lib_path, "blend_file": blend_path, "note": "Pose library created. Add this path as an Asset Library in Blender Preferences > File Paths."}
 `, libPath)
 			return execAndFormat(bc, code)
 
@@ -5120,11 +5234,36 @@ else:
 			if metarigType == "" {
 				metarigType = "human"
 			}
+			// Map metarig_type to actual bpy.ops operator names
+			opMap := map[string]string{
+				"basic":          "bpy.ops.object.armature_basic_metarig_add(",
+				"human":          "bpy.ops.object.armature_human_metarig_add(",
+				"quadruped":      "bpy.ops.object.animal_metarig_add(",
+				"bird":           "bpy.ops.object.animal_metarig_add(",
+				"cat":            "bpy.ops.object.animal_metarig_add(",
+				"horse":          "bpy.ops.object.animal_metarig_add(",
+				"monkey":         "bpy.ops.object.animal_metarig_add(",
+				"shark":          "bpy.ops.object.animal_metarig_add(",
+				"wolf":           "bpy.ops.object.animal_metarig_add(",
+				"arm.finger":     "bpy.ops.object.armature_human_metarig_add(",
+				"leg.plane.02":   "bpy.ops.object.armature_human_metarig_add(",
+				"spine.basic.01": "bpy.ops.object.armature_human_metarig_add(",
+				"spine.reptile.01": "bpy.ops.object.armature_human_metarig_add(",
+				"head.basic.01":  "bpy.ops.object.armature_human_metarig_add(",
+			}
+			opCall, ok := opMap[metarigType]
+			if !ok {
+				// Default to human for unknown types
+				opCall = "bpy.ops.object.armature_human_metarig_add("
+			}
 			code := fmt.Sprintf(`import bpy
-bpy.ops.object.armature_human_metarig_add(enter_editmode=True, location=(0, 0, 0))
+%senter_editmode=True, location=(0, 0, 0))
 obj = bpy.context.active_object
-result = {"added": obj.name, "type": "%s"}
-`, metarigType)
+if obj:
+    result = {"added": obj.name, "type": "%s"}
+else:
+    result = {"error": "failed to add metarig"}
+`, opCall, metarigType)
 			return execAndFormat(bc, code)
 
 		case "list_metarigs":

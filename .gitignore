@@ -1,0 +1,29 @@
+# Build output
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go
+go.sum
+
+# Test
+*.test
+*.out
+*.prof
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Local AI rules
+.github/instructions/

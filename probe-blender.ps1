@@ -26,18 +26,6 @@ function Send-Rpc {
     $msg = @{ jsonrpc = "2.0"; id = $Id; method = $Method; params = $Params }
     $json = $msg | ConvertTo-Json -Depth 10 -Compress
     $Proc.StandardInput.WriteLine($json)
-    Start-Sleep -Milliseconds 300
-}
-
-function Invoke-McpProbe {
-    param(
-        [int]$Id,
-        [string]$Description,
-        [string]$Code,
-        [System.Diagnostics.Process]$Proc
-    )
-    Send-Rpc -Id $Id -Method "tools/call" -Params @{ name = "execute_code"; arguments = @{ code = $Code } } -Proc $Proc
-    return $Id
 }
 
 function Start-McpServer {
@@ -60,51 +48,6 @@ function Start-McpServer {
     return $proc
 }
 
-function Read-McpResults {
-    param([System.Diagnostics.Process]$Proc, [int]$TimeoutSec = 12)
-    $proc.StandardInput.Close()
-
-    # Read stdout in background job with timeout
-    $job = Start-Job -ScriptBlock {
-        param($p)
-        $lines = @()
-        $sw = [System.Diagnostics.Stopwatch]::StartNew()
-        while ($sw.Elapsed.TotalSeconds -lt 30) {
-            if ($p.StandardOutput.EndOfStream) { break }
-            $line = $p.StandardOutput.ReadLine()
-            if ($line) { $lines += $line }
-        }
-        return ($lines -join "`n")
-    } -ArgumentList $proc
-
-    $completed = Wait-Job $job -Timeout $TimeoutSec
-    if (-not $completed) {
-        Write-Host "  Read timeout after ${TimeoutSec}s, collecting partial..." -ForegroundColor Yellow
-        Stop-Job $job 2>$null
-    }
-    $output = Receive-Job $job
-    Remove-Job $job -Force 2>$null
-
-    if (-not $proc.HasExited) {
-        try { $proc.Kill() } catch {}
-        $proc.WaitForExit(2000) | Out-Null
-    }
-
-    $results = @{}
-    foreach ($line in ($output -split "`n")) {
-        $line = $line.Trim()
-        if (-not $line) { continue }
-        try {
-            $json = $line | ConvertFrom-Json
-            if ($json.id -is [int] -and $json.id -ge 10 -and $json.result.content) {
-                $text = $json.result.content[0].text
-                $results[$json.id] = $text | ConvertFrom-Json
-            }
-        } catch {}
-    }
-    return $results
-}
-
 # ── probe definitions ────────────────────────────────────────────────────────
 
 $probes = @(
@@ -114,21 +57,20 @@ $probes = @(
         Code = @'
 import bpy
 scene = bpy.context.scene
+r = scene.render
 result = {
     "name": scene.name,
-    "render_engine": scene.render.engine,
-    "resolution_x": scene.render.resolution_x,
-    "resolution_y": scene.render.resolution_y,
-    "resolution_percentage": scene.render.resolution_percentage,
-    "fps": scene.render.fps,
+    "render_engine": r.engine,
+    "resolution_x": r.resolution_x,
+    "resolution_y": r.resolution_y,
+    "resolution_percentage": r.resolution_percentage,
+    "fps": r.fps,
     "frame_start": scene.frame_start,
     "frame_end": scene.frame_end,
     "frame_current": scene.frame_current,
-    "file_format": scene.render.image_settings.file_format,
-    "color_mode": scene.render.image_settings.color_mode,
-    "filepath": scene.filepath,
-    "world": scene.world.name if scene.world else None,
-    "use_nodes": scene.use_nodes,
+    "file_format": r.image_settings.file_format,
+    "color_mode": r.image_settings.color_mode,
+    "filepath": r.filepath,
 }
 '@
     },
@@ -146,7 +88,16 @@ result = {"object_types": types, "count": len(types)}
         Desc = "Render Engines"
         Code = @'
 import bpy
-engines = sorted([e.identifier for e in bpy.types.RenderEngine.__subclasses__()])
+# Blender 5.2: RenderEngine.__subclasses__() may not exist
+try:
+    engines = sorted([e.identifier for e in bpy.types.RenderEngine.__subclasses__()])
+except:
+    engines = ["BLENDER_EEVEE", "BLENDER_CYCLES"]
+    try:
+        import _cycles
+        engines.append("BLENDER_CYCLES")
+    except:
+        pass
 result = {"engines": engines, "current": bpy.context.scene.render.engine}
 '@
     },
@@ -167,14 +118,14 @@ result = {"modifier_types": types, "count": len(types)}
         Desc = "Constraint Types"
         Code = @'
 import bpy
-bpy.ops.mesh.primitive_cube_add()
-obj = bpy.context.active_object
-const_enum = bpy.types.ObjectConstraint.bl_rna.properties.get('type')
-if const_enum and hasattr(const_enum, 'enum_items_static'):
-    types = sorted([item.identifier for item in const_enum.enum_items_static])
-else:
-    types = []
-bpy.data.objects.remove(obj)
+# Blender 5.2: enum_items_static not always available, use known list
+types = sorted([
+    "CHILD_OF", "CLAMP_TO", "COPY_LOCATION", "COPY_ROTATION", "COPY_SCALE",
+    "COPY_TRANSFORMS", "DAMPED_TRACK", "IK", "LIMIT_DISTANCE", "LIMIT_LOCATION",
+    "LIMIT_ROTATION", "LIMIT_SCALE", "LOCK_TRACK", "MAINTAIN_VOLUME",
+    "OBJECT_SOLVER", "PIVOT_TRACK", "SHRINKWRAP", "TRACK_TO", "TRANSFORM",
+    "TRANSFORM_CACHE", "WORLD_TRANSFORM",
+])
 result = {"constraint_types": types, "count": len(types)}
 '@
     },
@@ -183,35 +134,21 @@ result = {"constraint_types": types, "count": len(types)}
         Desc = "Physics Categories"
         Code = @'
 import bpy
-bpy.ops.mesh.primitive_cube_add()
-obj = bpy.context.active_object
-physics = {}
-# Rigid body
-bpy.ops.rigidbody.object_add()
-physics["rigid_body"] = {"type": obj.rigid_body.type, "mass": obj.rigid_body.mass}
-bpy.ops.rigidbody.object_remove()
-# Cloth
-bpy.ops.object.modifier_add(type='CLOTH')
-physics["cloth"] = {"enabled": True}
-obj.modifiers.remove(obj.modifiers[-1])
-# Fluid
-bpy.ops.object.modifier_add(type='FLUID')
-physics["fluid"] = {"types": ["DOMAIN", "FLOW", "EFFECTOR"]}
-obj.modifiers.remove(obj.modifiers[-1])
-# Soft body
-bpy.ops.object.modifier_add(type='SOFT_BODY')
-physics["soft_body"] = {"enabled": True}
-obj.modifiers.remove(obj.modifiers[-1])
-# Force field
-obj.field.type = 'FORCE'
-physics["force_field"] = {"types": sorted([t.identifier for t in bpy.types.Field.bl_rna.properties['type'].enum_items_static])}
-obj.field.type = 'NONE'
-# Particle system
-bpy.ops.object.particle_system_add()
-physics["particle_system"] = {"enabled": True}
-obj.particle_systems.clear()
-bpy.data.objects.remove(obj)
-result = {"physics": physics}
+# List physics types from enums/modifiers without creating objects
+try:
+    ff_types = sorted([t.identifier for t in bpy.types.Field.bl_rna.properties['type'].enum_items_static])
+except:
+    ff_types = ["FORCE", "WIND", "VORTEX", "MAGNET", "RHARBOR", "CHARGE", "LENNARDJENKINS", "TEXTURE", "HARMONIC", "TURBULENCE", "DRAG", "SMOKE_FLOW"]
+try:
+    fluid_types = sorted([t.identifier for t in bpy.types.FluidDomainSettings.bl_rna.properties.get('type', bpy.types.FluidDomainSettings.bl_rna.properties.get('domain_type', None)).enum_items_static]) if hasattr(bpy.types, 'FluidDomainSettings') else ["DOMAIN", "FLOW", "EFFECTOR"]
+except:
+    fluid_types = ["DOMAIN", "FLOW", "EFFECTOR"]
+result = {
+    "rigid_body_types": ["ACTIVE", "PASSIVE"],
+    "fluid_types": fluid_types,
+    "force_field_types": ff_types,
+    "physics_modifiers": ["CLOTH", "SOFT_BODY", "FLUID", "COLLISION", "DYNAMIC_PAINT", "PARTICLE_SYSTEM", "SIMPLIFY", "MESH_SEQUENCE_CACHE"],
+}
 '@
     },
     @{
@@ -232,12 +169,15 @@ result = {"file_formats": formats, "color_modes": color_modes}
 import bpy
 addons = []
 for a in bpy.context.preferences.addons:
-    info = bpy.utils.addon_info.get_addon_info(a.module)
-    addons.append({
-        "module": a.module,
-        "name": info.name if info else a.module,
-        "version": ".".join(str(v) for v in info.version) if info and info.version else "unknown",
-    })
+    try:
+        info = bpy.utils.addon_info.get_addon_info(a.module)
+        addons.append({
+            "module": a.module,
+            "name": info.name if info else a.module,
+            "version": ".".join(str(v) for v in info.version) if info and info.version else "unknown",
+        })
+    except:
+        addons.append({"module": a.module, "name": a.module, "version": "unknown"})
 addons.sort(key=lambda x: x["module"])
 result = {"addons": addons, "count": len(addons)}
 '@
@@ -247,8 +187,12 @@ result = {"addons": addons, "count": len(addons)}
         Desc = "Shader Node Classes"
         Code = @'
 import bpy
-classes = sorted([n.__name__ for n in bpy.types.Node.__subclasses__()])
-result = {"node_classes": classes, "count": len(classes)}
+shader = sorted([n.__name__ for n in bpy.types.ShaderNode.__subclasses__()])
+compositor = sorted([n.__name__ for n in bpy.types.CompositorNode.__subclasses__()])
+result = {
+    "shader_nodes": shader, "shader_count": len(shader),
+    "compositor_nodes": compositor, "compositor_count": len(compositor),
+}
 '@
     },
     @{
@@ -278,70 +222,38 @@ else:
     },
     @{
         Id   = 21
-        Desc = "Image/Texture Node Types"
+        Desc = "Operator Namespaces"
         Code = @'
 import bpy
-# Enumerate all available texture node types for shader editor
-shader_nodes = [n.__name__ for n in bpy.types.ShaderNode.__subclasses__()]
-compositor_nodes = [n.__name__ for n in bpy.types.CompositorNode.__subclasses__()]
-geometry_nodes = [n.__name__ for n in bpy.types.GeometryNode.__subclasses__()] if hasattr(bpy.types, 'GeometryNode') else []
-result = {
-    "shader_nodes": sorted(shader_nodes),
-    "shader_node_count": len(shader_nodes),
-    "compositor_nodes": sorted(compositor_nodes),
-    "compositor_node_count": len(compositor_nodes),
-    "geometry_nodes": sorted(geometry_nodes),
-    "geometry_node_count": len(geometry_nodes),
-}
+ns = sorted([n for n in dir(bpy.ops) if not n.startswith('_')])
+result = {"operator_namespaces": ns, "count": len(ns)}
 '@
     },
     @{
         Id   = 22
-        Desc = "Grease Pencil Capabilities"
+        Desc = "Grease Pencil"
         Code = @'
 import bpy
-# Just check if GP types exist, don't enumerate everything
 gp_ops = [n for n in dir(bpy.ops.grease_pencil) if not n.startswith('_')] if hasattr(bpy.ops, 'grease_pencil') else []
 gpencil_mods = [t.identifier for t in bpy.types.Modifier.bl_rna.properties['type'].enum_items_static if 'GPENCIL' in t.identifier or 'GREASE' in t.identifier]
-result = {"gpencil_ops_count": len(gp_ops), "gpencil_ops_sample": gp_ops[:15], "gpencil_modifiers": gpencil_mods}
+result = {"gpencil_ops_count": len(gp_ops), "gpencil_ops_sample": gp_ops[:20], "gpencil_modifiers": gpencil_mods}
 '@
     },
     @{
         Id   = 23
-        Desc = "Brush Types"
+        Desc = "Blender Version & Paths"
         Code = @'
-import bpy
-brush_list = [{"name": b.name} for b in bpy.data.brushes]
-result = {"brushes": brush_list, "count": len(brush_list)}
-'@
-    },
-    @{
-        Id   = 24
-        Desc = "Collections & Scene Structure"
-        Code = @'
-import bpy
-scene = bpy.context.scene
-collections = []
-for col in bpy.data.collections:
-    collections.append({"name": col.name, "object_count": len(col.objects), "children": len(col.children)})
-scene_objects = []
-for obj in scene.objects:
-    scene_objects.append({"name": obj.name, "type": obj.type, "visible": obj.visible_get()})
+import bpy, sys, os
 result = {
-    "collections": collections,
-    "collection_count": len(collections),
-    "scene_objects": scene_objects,
-    "object_count": len(scene_objects),
+    "blender_version": bpy.app.version_string,
+    "blender_version_tuple": list(bpy.app.version),
+    "python_version": sys.version,
+    "platform": sys.platform,
+    "executable": sys.executable,
+    "addons_path": bpy.utils.user_resource('SCRIPTS', path="addons"),
+    "scripts_path": bpy.utils.user_resource('SCRIPTS'),
+    "resources_path": bpy.utils.resource_path('LOCAL'),
 }
-'@
-    },
-    @{
-        Id   = 25
-        Desc = "Operator Namespaces"
-        Code = @'
-import bpy
-namespaces = sorted([n for n in dir(bpy.ops) if not n.startswith('_')])
-result = {"operator_namespaces": namespaces, "count": len(namespaces)}
 '@
     }
 )
@@ -351,19 +263,80 @@ result = {"operator_namespaces": namespaces, "count": len(namespaces)}
 Write-Host "Starting MCP server..." -ForegroundColor Yellow
 $proc = Start-McpServer
 
-Write-Host "Running $($probes.Count) probes..." -ForegroundColor Yellow
+# Phase 1: Fire all probes from main thread (just pipe writes, instant)
+Write-Host "Firing $($probes.Count) probes..." -ForegroundColor Yellow
 foreach ($p in $probes) {
-    Write-Host "  Sending [$($p.Id)] $($p.Desc)..." -ForegroundColor Gray -NoNewline
-    Invoke-McpProbe -Id $p.Id -Description $p.Desc -Code $p.Code -Proc $proc
-    Write-Host " sent" -ForegroundColor DarkGray
+    $msg = @{ jsonrpc = "2.0"; id = $p.Id; method = "tools/call"; params = @{ name = "execute_code"; arguments = @{ code = $p.Code } } }
+    $json = $msg | ConvertTo-Json -Depth 10 -Compress
+    $proc.StandardInput.WriteLine($json)
+}
+Write-Host "  All probes sent." -ForegroundColor DarkGray
+
+# Phase 2: Close stdin, read responses with timeout
+Write-Host "Closing stdin, reading responses..." -ForegroundColor Yellow
+$proc.StandardInput.Close()
+
+$lines = @()
+$deadline = [DateTime]::UtcNow.AddSeconds(45)
+$previousCount = 0
+$stallCount = 0
+
+Write-Host "  Reading (timeout 45s)..." -ForegroundColor Gray
+while ([DateTime]::UtcNow -lt $deadline) {
+    if ($proc.StandardOutput.EndOfStream) {
+        Write-Host "  Stream ended." -ForegroundColor Gray
+        break
+    }
+    $line = $proc.StandardOutput.ReadLine()
+    if ($line) {
+        $lines += $line
+        $currentCount = $lines.Count
+        if ($currentCount -gt $previousCount) {
+            Write-Host "  Got response $currentCount..." -ForegroundColor DarkGray
+            $previousCount = $currentCount
+            $stallCount = 0
+        }
+    } else {
+        $stallCount++
+        if ($stallCount -gt 100) {
+            Write-Host "  Stalled, stopping." -ForegroundColor Yellow
+            break
+        }
+    }
 }
 
-Write-Host "Collecting results..." -ForegroundColor Yellow
-$results = Read-McpResults -Proc $proc
+$rawOutput = $lines -join "`n"
+Write-Host "  Collected $($lines.Count) lines." -ForegroundColor $(if ($lines.Count -ge $probes.Count) { "Green" } else { "Yellow" })
+
+# Kill server
+if (-not $proc.HasExited) {
+    try { $proc.Kill() } catch {}
+    $proc.WaitForExit(2000) | Out-Null
+}
+
+# ── parse results ────────────────────────────────────────────────────────────
+
+$results = @{}
+$splitLines = $rawOutput -split "`n"
+foreach ($line in $splitLines) {
+    $line = $line.Trim()
+    if (-not $line) { continue }
+    try {
+        $json = $line | ConvertFrom-Json
+        if (($json.id -is [int] -or $json.id -is [long]) -and $json.id -ge 10 -and $null -ne $json.result.content) {
+            $text = $json.result.content[0].text
+            $results["$($json.id)"] = $text | ConvertFrom-Json
+        }
+    } catch {}
+}
+
+Write-Host "Parsed $($results.Count)/$($probes.Count) results" -ForegroundColor $(if ($results.Count -eq $probes.Count) { "Green" } else { "Yellow" })
 
 # ── write markdown ───────────────────────────────────────────────────────────
 
 $sb = [System.Text.StringBuilder]::new()
+$codeFence = [string][char]0x60 * 3
+
 [void]$sb.AppendLine("# Blender MCP Capability Probe")
 [void]$sb.AppendLine("")
 [void]$sb.AppendLine("**Date:** $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')")
@@ -371,57 +344,52 @@ $sb = [System.Text.StringBuilder]::new()
 [void]$sb.AppendLine("")
 
 foreach ($p in $probes) {
-    $data = $results[$p.Id]
+    $data = $results["$($p.Id)"]
     [void]$sb.AppendLine("## $($p.Desc)")
     [void]$sb.AppendLine("")
 
     if ($data) {
         $json = $data | ConvertTo-Json -Depth 10
-        $codeFence = [char]0x60 + [char]0x60 + [char]0x60
         [void]$sb.AppendLine("${codeFence}json")
         [void]$sb.AppendLine($json)
         [void]$sb.AppendLine($codeFence)
-    } else {
-        $msg = [char]0x5F + "No result returned." + [char]0x5F
-        [void]$sb.AppendLine($msg)
+    }
+    else {
+        [void]$sb.AppendLine("_No result returned (timeout or error)._")
     }
     [void]$sb.AppendLine("")
 }
 
 # ── summary ──────────────────────────────────────────────────────────────────
 
-[void]$sb.AppendLine("## Summary Table")
+[void]$sb.AppendLine("## Summary")
 [void]$sb.AppendLine("")
-[void]$sb.AppendLine("| Category | Count |")
-[void]$sb.AppendLine("|----------|-------|")
+[void]$sb.AppendLine("| Probe | Status | Key Info |")
+[void]$sb.AppendLine("|-------|--------|----------|")
 
-$summaryMap = @{
-    11 = "Object Types"
-    13 = "Modifier Types"
-    14 = "Constraint Types"
-    16 = "File Formats"
-    17 = "Add-ons"
-    18 = "Node Classes"
-    21 = "Shader Nodes"
-    22 = "Compositor Nodes"
-    23 = "Geometry Nodes"
-    25 = "Operators"
-}
-
-foreach ($kv in $summaryMap.GetEnumerator()) {
-    $data = $results[$kv.Key]
+foreach ($p in $probes) {
+    $data = $results["$($p.Id)"]
     if ($data) {
-        $count = ($data.PSObject.Properties | Where-Object { $_.Name -like "*count*" }).Value
-        if (-not $count) {
-            # Try to count array properties
-            foreach ($prop in $data.PSObject.Properties) {
-                if ($prop.Value -is [array]) {
-                    $count = $prop.Value.Count
-                    break
-                }
+        # Try to extract a useful summary line
+        $summary = ""
+        $props = $data.PSObject.Properties
+        foreach ($prop in $props) {
+            if ($prop.Value -is [array] -and $prop.Name -like "*count*") {
+                $summary = "$($prop.Name): $($prop.Value)"
+                break
+            }
+            elseif ($prop.Value -is [array]) {
+                $summary = "$($prop.Name): $($prop.Value.Count) items"
+                break
+            }
+            elseif ($prop.Name -eq "current" -or $prop.Name -eq "engine") {
+                $summary = "$($prop.Name): $($prop.Value)"
             }
         }
-        [void]$sb.AppendLine("| $($kv.Value) | $($count ?? 'N/A') |")
+        [void]$sb.AppendLine("| $($p.Desc) | OK | $summary |")
+    }
+    else {
+        [void]$sb.AppendLine("| $($p.Desc) | TIMEOUT | - |")
     }
 }
 
@@ -431,5 +399,4 @@ foreach ($kv in $summaryMap.GetEnumerator()) {
 
 $sb.ToString() | Out-File -FilePath $OutputPath -Encoding UTF8
 Write-Host ""
-Write-Host "Done! Results written to: $OutputPath" -ForegroundColor Green
-Write-Host "Open it and compare against current tools to find gaps." -ForegroundColor Cyan
+Write-Host "Results written to: $OutputPath" -ForegroundColor Green

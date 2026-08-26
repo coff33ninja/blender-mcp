@@ -766,6 +766,41 @@ func ToolDefs() []Tool {
 			},
 		},
 		{
+			Name:        "export_vrm",
+			Description: "Export the scene as VRM (.vrm). Requires the VRM add-on to be installed in Blender. Use check_vrm_addon first to verify availability.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"filepath": map[string]any{
+						"type":        "string",
+						"description": "Output file path (.vrm)",
+					},
+				},
+				"required": []string{"filepath"},
+			},
+		},
+		{
+			Name:        "check_vrm_addon",
+			Description: "Check if the VRM add-on is installed and available in Blender. Returns availability status and supported export operators.",
+			InputSchema: map[string]any{
+				"type":       "object",
+				"properties": map[string]any{},
+			},
+		},
+		{
+			Name:        "list_addons",
+			Description: "List all installed Blender add-ons with their enabled/disabled status. Useful for discovering available importers, exporters, and tools.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"filter": map[string]any{
+						"type":        "string",
+						"description": "Optional filter substring (e.g. 'vrm', 'fbx', 'import')",
+					},
+				},
+			},
+		},
+		{
 			Name:        "setup_keyframes",
 			Description: "Insert transform keyframes on objects at specified frames.",
 			InputSchema: map[string]any{
@@ -1491,28 +1526,31 @@ func RegisterTools(bc *blender.Client) *ToolRegistry {
 		{ToolDefs()[38], handleExportGLTF(bc)},
 		{ToolDefs()[39], handleExportOBJ(bc)},
 		{ToolDefs()[40], handleExportFBX(bc)},
-		{ToolDefs()[41], handleSetupKeyframes(bc)},
-		{ToolDefs()[42], handleSetupRigidBody(bc)},
-		{ToolDefs()[43], handleSetupFluidDomain(bc)},
-		{ToolDefs()[44], handleSetupFluidInflow(bc)},
-		{ToolDefs()[45], handleSetupEffector(bc)},
-		{ToolDefs()[46], handleSetupCamera(bc)},
-		{ToolDefs()[47], handleManageCollections(bc)},
-		{ToolDefs()[48], handleSetRenderEngine(bc)},
-		{ToolDefs()[49], handleSetRenderFormat(bc)},
-		{ToolDefs()[50], handleSetWorldEnvironment(bc)},
-		{ToolDefs()[51], handleSetCursor(bc)},
-		{ToolDefs()[52], handleSetSnap(bc)},
-		{ToolDefs()[53], handleEditMeshData(bc)},
-		{ToolDefs()[54], handleSetParticleSystem(bc)},
-		{ToolDefs()[55], handleSetRenderPasses(bc)},
-		{ToolDefs()[56], handleCreateObject(bc)},
-		{ToolDefs()[57], handleGreasePencilManage(bc)},
-		{ToolDefs()[58], handleCompositorNodes(bc)},
-		{ToolDefs()[59], handleNodeWranglerOps(bc)},
-		{ToolDefs()[60], handlePoseLibraryOps(bc)},
-		{ToolDefs()[61], handleRigifyOps(bc)},
-		{ToolDefs()[62], handleManageShaderNodes(bc)},
+		{ToolDefs()[41], handleExportVRM(bc)},
+		{ToolDefs()[42], handleCheckVRMAddon(bc)},
+		{ToolDefs()[43], handleListAddons(bc)},
+		{ToolDefs()[44], handleSetupKeyframes(bc)},
+		{ToolDefs()[45], handleSetupRigidBody(bc)},
+		{ToolDefs()[46], handleSetupFluidDomain(bc)},
+		{ToolDefs()[47], handleSetupFluidInflow(bc)},
+		{ToolDefs()[48], handleSetupEffector(bc)},
+		{ToolDefs()[49], handleSetupCamera(bc)},
+		{ToolDefs()[50], handleManageCollections(bc)},
+		{ToolDefs()[51], handleSetRenderEngine(bc)},
+		{ToolDefs()[52], handleSetRenderFormat(bc)},
+		{ToolDefs()[53], handleSetWorldEnvironment(bc)},
+		{ToolDefs()[54], handleSetCursor(bc)},
+		{ToolDefs()[55], handleSetSnap(bc)},
+		{ToolDefs()[56], handleEditMeshData(bc)},
+		{ToolDefs()[57], handleSetParticleSystem(bc)},
+		{ToolDefs()[58], handleSetRenderPasses(bc)},
+		{ToolDefs()[59], handleCreateObject(bc)},
+		{ToolDefs()[60], handleGreasePencilManage(bc)},
+		{ToolDefs()[61], handleCompositorNodes(bc)},
+		{ToolDefs()[62], handleNodeWranglerOps(bc)},
+		{ToolDefs()[63], handlePoseLibraryOps(bc)},
+		{ToolDefs()[64], handleRigifyOps(bc)},
+		{ToolDefs()[65], handleManageShaderNodes(bc)},
 	}
 
 	for _, entry := range allTools {
@@ -3195,6 +3233,120 @@ func handleExportFBX(bc *blender.Client) ToolHandler {
 bpy.ops.export_scene.fbx(filepath='%s')
 result = {"filepath": '%s', "format": "FBX"}
 `, escapePyStr(filepath), escapePyStr(filepath))
+		return execAndFormat(bc, code)
+	}
+}
+
+func handleExportVRM(bc *blender.Client) ToolHandler {
+	return func(args map[string]any) (any, *Error) {
+		filepath := getStringArg(args, "filepath")
+		if filepath == "" {
+			return nil, &Error{Code: CodeInvalidParams, Message: "filepath is required"}
+		}
+		if !strings.HasSuffix(strings.ToLower(filepath), ".vrm") {
+			filepath += ".vrm"
+		}
+		code := fmt.Sprintf(`import bpy
+import sys
+
+# Check if VRM export operator exists
+if not hasattr(bpy.ops.export_scene, 'vrm'):
+    result = {"error": "VRM add-on not installed. Please install the VRM add-on first."}
+else:
+    # Select all mesh and armature objects for export
+    bpy.ops.object.select_all(action='DESELECT')
+    for obj in bpy.data.objects:
+        if obj.type in ('MESH', 'ARMATURE'):
+            obj.select_set(True)
+    
+    # Set the armature as active
+    for obj in bpy.data.objects:
+        if obj.type == 'ARMATURE':
+            bpy.context.view_layer.objects.active = obj
+            break
+    
+    # Export as VRM
+    bpy.ops.export_scene.vrm(filepath='%s')
+    result = {"filepath": '%s', "format": "VRM"}
+`, escapePyStr(filepath), escapePyStr(filepath))
+		return execAndFormat(bc, code)
+	}
+}
+
+func handleCheckVRMAddon(bc *blender.Client) ToolHandler {
+	return func(args map[string]any) (any, *Error) {
+		code := `import bpy
+import sys
+
+vrm_info = {
+    "import_available": hasattr(bpy.ops.import_scene, 'vrm'),
+    "export_available": hasattr(bpy.ops.export_scene, 'vrm'),
+    "vrma_import_available": hasattr(bpy.ops.import_scene, 'vrma'),
+    "vrma_export_available": hasattr(bpy.ops.export_scene, 'vrma'),
+}
+
+# Check for VRM add-on in preferences
+try:
+    for addon in bpy.context.preferences.addons:
+        if hasattr(addon, 'module') and 'vrm' in addon.module.lower():
+            vrm_info["addon_module"] = addon.module
+            break
+except:
+    pass
+
+result = vrm_info
+`
+		return execAndFormat(bc, code)
+	}
+}
+
+func handleListAddons(bc *blender.Client) ToolHandler {
+	return func(args map[string]any) (any, *Error) {
+		filter := getStringArg(args, "filter")
+		code := fmt.Sprintf(`import bpy
+import addon_utils
+
+addons = []
+for mod in addon_utils.modules():
+    name = mod.__name__
+    enabled_check = addon_utils.check(name)
+    enabled = enabled_check[0] if isinstance(enabled_check, (list, tuple)) else bool(enabled_check)
+    
+    # Get bl_info details
+    bl_info = getattr(mod, 'bl_info', {})
+    category = bl_info.get('category', '') if isinstance(bl_info, dict) else ''
+    description = bl_info.get('description', '') if isinstance(bl_info, dict) else ''
+    author = bl_info.get('author', '') if isinstance(bl_info, dict) else ''
+    version = bl_info.get('version', []) if isinstance(bl_info, dict) else []
+    version_str = '.'.join(str(v) for v in version) if version else ''
+    
+    addon_info = {
+        "name": name,
+        "enabled": enabled,
+        "category": category,
+        "description": description,
+        "author": author,
+        "version": version_str,
+    }
+    
+    # Apply filter
+    filter_str = "%s".lower()
+    if filter_str:
+        searchable = f"{name} {category} {description}".lower()
+        if filter_str not in searchable:
+            continue
+    
+    addons.append(addon_info)
+
+# Sort: enabled first, then by name
+addons.sort(key=lambda x: (not x["enabled"], x["name"]))
+
+result = {
+    "total": len(addons),
+    "filter": "%s" if "%s" else None,
+    "addons": addons
+}
+`, escapePyStr(filter), escapePyStr(filter), escapePyStr(filter))
 		return execAndFormat(bc, code)
 	}
 }

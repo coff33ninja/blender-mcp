@@ -12,6 +12,7 @@ This Go binary speaks MCP over stdio (JSON-RPC 2.0) and forwards tool calls to B
 
 - **Blender 5.1+** with the `mcp` add-on installed and socket server running on `localhost:9876`
 - Go 1.26+ (for building from source)
+- **Optional:** [VRM add-on](https://extensions.blender.org/add-ons/vrm/) for VRM import/export support
 
 ## Building
 
@@ -45,7 +46,7 @@ blender-mcp.exe --host localhost --port 9876 --verbose
 }
 ```
 
-## Exposed Tools (63)
+## Exposed Tools (66)
 
 ### Scene & Inspection
 | Tool | Description |
@@ -125,7 +126,18 @@ blender-mcp.exe --host localhost --port 9876 --verbose
 | `export_gltf` | Export as glTF/GLB |
 | `export_obj` | Export as OBJ |
 | `export_fbx` | Export as FBX |
+| `export_vrm` | Export as VRM (requires VRM add-on). Use `check_vrm_addon` first to verify availability |
 | `import_3d_file` | Import .glb, .gltf, .fbx, .obj, .stl, .ply, .bvh, .svg |
+| `check_vrm_addon` | Check if VRM add-on is installed and available |
+
+> **VRM Workflow:** Always call `check_vrm_addon` before `export_vrm`. If the add-on is not installed, the export will fail. The VRM add-on is available from [Blender's official extensions](https://extensions.blender.org/add-ons/vrm/).
+
+### Add-on Management
+| Tool | Description |
+|------|-------------|
+| `list_addons` | List all installed Blender add-ons with enabled/disabled status. Filter by name, category, or description |
+
+**Why VRM Support?** Previous Python-based VRM export scripts were unreliable and error-prone. By integrating directly with Blender's official VRM add-on via the MCP bridge, we get a stable, maintained export path that handles all the complexities of VRM 0.x/1.0 format compliance, MToon materials, and avatar metadata.
 
 ### Lights, Cameras & Environment
 | Tool | Description |

@@ -156,6 +156,8 @@ blender-mcp.exe --host localhost --port 9876 --verbose
 | `compositor_nodes` | Manage compositor nodes: list types (90+), list nodes, add, remove, connect |
 | `node_wrangler_ops` | Node Wrangler shortcuts: preview, swap, mix, collapse/expand, frame, texture setup, connect viewer |
 
+> **Note:** `node_wrangler_ops` requires the Shader Editor to be the active context in Blender. This means it won't work in headless/background mode — only when Blender's UI is open with the Shader Editor visible.
+
 ### Code Execution
 | Tool | Description |
 |------|-------------|

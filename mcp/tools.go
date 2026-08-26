@@ -1313,7 +1313,7 @@ func ToolDefs() []Tool {
 		},
 		{
 			Name:        "node_wrangler_ops",
-			Description: "Node Wrangler add-on shortcuts: preview links, swap nodes, mix nodes, collapse/expand, frames, textures setup.",
+			Description: "Node Wrangler add-on shortcuts: preview links, swap nodes, mix nodes, collapse/expand, frames, textures setup. Requires Shader Editor to be the active context.",
 			InputSchema: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -1509,10 +1509,10 @@ func RegisterTools(bc *blender.Client) *ToolRegistry {
 		{ToolDefs()[56], handleCreateObject(bc)},
 		{ToolDefs()[57], handleGreasePencilManage(bc)},
 		{ToolDefs()[58], handleCompositorNodes(bc)},
-		{ToolDefs()[59], handleManageShaderNodes(bc)},
-		{ToolDefs()[60], handleNodeWranglerOps(bc)},
-		{ToolDefs()[61], handlePoseLibraryOps(bc)},
-		{ToolDefs()[62], handleRigifyOps(bc)},
+		{ToolDefs()[59], handleNodeWranglerOps(bc)},
+		{ToolDefs()[60], handlePoseLibraryOps(bc)},
+		{ToolDefs()[61], handleRigifyOps(bc)},
+		{ToolDefs()[62], handleManageShaderNodes(bc)},
 	}
 
 	for _, entry := range allTools {
@@ -1562,6 +1562,16 @@ func toFloat(v any) float64 {
 	default:
 		return 0
 	}
+}
+
+// escapePyStr escapes a string for safe embedding in Python single-quoted strings.
+// Handles backslashes (Windows paths) and single quotes.
+func escapePyStr(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `'`, `\'`)
+	s = strings.ReplaceAll(s, "\n", `\n`)
+	s = strings.ReplaceAll(s, "\r", `\r`)
+	return s
 }
 
 func fmtFloats(vals []float64) string {
@@ -1620,13 +1630,15 @@ func handleListObjects(bc *blender.Client) ToolHandler {
 
 		filterClause := ""
 		if filterType != "" {
-			filterClause = fmt.Sprintf(` if obj.type == "%s"`, filterType)
+			filterClause = fmt.Sprintf(`
+    if obj.type != "%s":
+        continue`, filterType)
 		}
 
 		code := fmt.Sprintf(`import bpy, json
 scene = bpy.context.scene
 objects = []
-for obj in scene.objects%s:
+for obj in scene.objects:%s
     objects.append({
         "name": obj.name,
         "type": obj.type,
@@ -1684,8 +1696,7 @@ func handleCreateMeshObject(bc *blender.Client) ToolHandler {
 		name := getStringArg(args, "name")
 		nameArg := ""
 		if name != "" {
-			nameArg = fmt.Sprintf(`    obj.name = "%s"
-`, name)
+			nameArg = fmt.Sprintf("obj.name = '%s'\n", escapePyStr(name))
 		}
 
 		size := 2.0
@@ -1877,7 +1888,7 @@ result = {"name": obj.name, "type": obj.type, "location": [round(v, 4) for v in 
 bpy.ops.mesh.primitive_monkey_add(%s)
 obj = bpy.context.active_object
 if obj:
-%s    result = {"name": obj.name, "type": obj.type, "location": [round(v, 4) for v in obj.location]}
+    %sresult = {"name": obj.name, "type": obj.type, "location": [round(v, 4) for v in obj.location]}
 else:
     result = {"error": "failed to create object"}
 `, locParam, nameArg)
@@ -1988,10 +1999,17 @@ func handleRenderScene(bc *blender.Client) ToolHandler {
 
 		code := fmt.Sprintf(`import bpy, os
 scene = bpy.context.scene
-scene.render.filepath = "%s"%s%s
+if scene.camera is None:
+    cam = bpy.data.cameras.new("AutoCamera")
+    cam_obj = bpy.data.objects.new("AutoCamera", cam)
+    scene.collection.objects.link(cam_obj)
+    scene.camera = cam_obj
+    cam_obj.location = (0, -10, 5)
+    cam_obj.rotation_euler = (1.1, 0, 0)
+scene.render.filepath = '%s'%s%s
 bpy.ops.render.render(write_still=True)
-result = {"rendered": True, "output_path": "%s"}
-`, outputPath, resXArg, resYArg, outputPath)
+result = {"rendered": True, "output_path": '%s'}
+`, escapePyStr(outputPath), resXArg, resYArg, escapePyStr(outputPath))
 		return execAndFormat(bc, code)
 	}
 }
@@ -2020,21 +2038,21 @@ func handleImport3DFile(bc *blender.Client) ToolHandler {
 		var importFn string
 		switch ext {
 		case ".glb", ".gltf":
-			importFn = fmt.Sprintf(`bpy.ops.import_scene.gltf(filepath="%s")`, filepath)
+			importFn = fmt.Sprintf(`bpy.ops.import_scene.gltf(filepath='%s')`, escapePyStr(filepath))
 		case ".fbx":
-			importFn = fmt.Sprintf(`bpy.ops.import_scene.fbx(filepath="%s")`, filepath)
+			importFn = fmt.Sprintf(`bpy.ops.import_scene.fbx(filepath='%s')`, escapePyStr(filepath))
 		case ".obj":
-			importFn = fmt.Sprintf(`bpy.ops.wm.obj_import(filepath="%s")`, filepath)
+			importFn = fmt.Sprintf(`bpy.ops.wm.obj_import(filepath='%s')`, escapePyStr(filepath))
 		case ".stl":
-			importFn = fmt.Sprintf(`bpy.ops.wm.stl_import(filepath="%s")`, filepath)
+			importFn = fmt.Sprintf(`bpy.ops.wm.stl_import(filepath='%s')`, escapePyStr(filepath))
 		case ".ply":
-			importFn = fmt.Sprintf(`bpy.ops.wm.ply_import(filepath="%s")`, filepath)
+			importFn = fmt.Sprintf(`bpy.ops.wm.ply_import(filepath='%s')`, escapePyStr(filepath))
 		case ".bvh":
-			importFn = fmt.Sprintf(`bpy.ops.import_anim.bvh(filepath="%s")`, filepath)
+			importFn = fmt.Sprintf(`bpy.ops.import_anim.bvh(filepath='%s')`, escapePyStr(filepath))
 		case ".svg":
-			importFn = fmt.Sprintf(`bpy.ops.import_curve.svg(filepath="%s")`, filepath)
+			importFn = fmt.Sprintf(`bpy.ops.import_curve.svg(filepath='%s')`, escapePyStr(filepath))
 		case ".vrm":
-			importFn = fmt.Sprintf(`bpy.ops.import_curve.vrm(filepath="%s")`, filepath)
+			importFn = fmt.Sprintf(`bpy.ops.import_scene.vrm(filepath='%s')`, escapePyStr(filepath))
 		default:
 			return nil, &Error{Code: CodeInvalidParams, Message: "unsupported file type: " + ext}
 		}
@@ -2066,25 +2084,25 @@ func handleExport3DFile(bc *blender.Client) ToolHandler {
 		var exportFn string
 		switch ext {
 		case ".glb", ".gltf":
-			exportFn = fmt.Sprintf(`bpy.ops.export_scene.gltf(filepath="%s"%s)`, filepath, selArg)
+			exportFn = fmt.Sprintf(`bpy.ops.export_scene.gltf(filepath='%s'%s)`, escapePyStr(filepath), selArg)
 		case ".fbx":
-			exportFn = fmt.Sprintf(`bpy.ops.export_scene.fbx(filepath="%s"%s)`, filepath, selArg)
+			exportFn = fmt.Sprintf(`bpy.ops.export_scene.fbx(filepath='%s'%s)`, escapePyStr(filepath), selArg)
 		case ".obj":
-			exportFn = fmt.Sprintf(`bpy.ops.wm.obj_export(filepath="%s"%s)`, filepath, selArg)
+			exportFn = fmt.Sprintf(`bpy.ops.wm.obj_export(filepath='%s'%s)`, escapePyStr(filepath), selArg)
 		case ".stl":
-			exportFn = fmt.Sprintf(`bpy.ops.wm.stl_export(filepath="%s"%s)`, filepath, selArg)
+			exportFn = fmt.Sprintf(`bpy.ops.wm.stl_export(filepath='%s'%s)`, escapePyStr(filepath), selArg)
 		case ".ply":
-			exportFn = fmt.Sprintf(`bpy.ops.wm.ply_export(filepath="%s"%s)`, filepath, selArg)
+			exportFn = fmt.Sprintf(`bpy.ops.wm.ply_export(filepath='%s'%s)`, escapePyStr(filepath), selArg)
 		case ".bvh":
-			exportFn = fmt.Sprintf(`bpy.ops.export_anim.bvh(filepath="%s"%s)`, filepath, selArg)
+			exportFn = fmt.Sprintf(`bpy.ops.export_anim.bvh(filepath='%s'%s)`, escapePyStr(filepath), selArg)
 		default:
 			return nil, &Error{Code: CodeInvalidParams, Message: "unsupported file type: " + ext}
 		}
 
 		code := fmt.Sprintf(`import bpy
 %s
-result = {"exported": "%s"}
-`, exportFn, filepath)
+result = {"exported": '%s'}
+`, exportFn, escapePyStr(filepath))
 		return execAndFormat(bc, code)
 	}
 }
@@ -2128,29 +2146,33 @@ func handleAddLight(bc *blender.Client) ToolHandler {
 		loc := getFloatSliceArg(args, "location")
 		locArg := ""
 		if len(loc) == 3 {
-			locArg = fmt.Sprintf(", location=(%s)", fmtFloats(loc))
+			locArg = fmt.Sprintf("location=(%s)", fmtFloats(loc))
 		}
 		energyArg := ""
 		if v, ok := args["energy"].(float64); ok && v > 0 {
-			energyArg = fmt.Sprintf("\nlight.data.energy = %g", v)
+			energyArg = fmt.Sprintf("\n    light.data.energy = %g", v)
 		}
 		color := getFloatSliceArg(args, "color")
 		colorArg := ""
 		if len(color) >= 3 {
-			colorArg = fmt.Sprintf("\nlight.data.color = (%s)", fmtFloats(color[:3]))
+			colorArg = fmt.Sprintf("\n    light.data.color = (%s)", fmtFloats(color[:3]))
 		}
 		name := getStringArg(args, "name")
 		nameArg := ""
 		if name != "" {
-			nameArg = fmt.Sprintf("\nlight.name = \"%s\"", name)
+			nameArg = fmt.Sprintf("\n    light.name = '%s'", escapePyStr(name))
 		}
 
+		locSep := ""
+		if locArg != "" {
+			locSep = ", "
+		}
 		code := fmt.Sprintf(`import bpy
-bpy.ops.object.light_add(type="%s"%s)
+bpy.ops.object.light_add(type="%s"%s%s)
 light = bpy.context.active_object
 if light:%s%s%s
 result = {"name": light.name, "type": light.data.type} if light else {"error": "failed to add light"}
-`, lightType, locArg, nameArg, energyArg, colorArg)
+`, lightType, locSep, locArg, nameArg, energyArg, colorArg)
 		return execAndFormat(bc, code)
 	}
 }
@@ -2160,17 +2182,17 @@ func handleAddCamera(bc *blender.Client) ToolHandler {
 		loc := getFloatSliceArg(args, "location")
 		locArg := ""
 		if len(loc) == 3 {
-			locArg = fmt.Sprintf(", location=(%s)", fmtFloats(loc))
+			locArg = fmt.Sprintf("location=(%s)", fmtFloats(loc))
 		}
 		rot := getFloatSliceArg(args, "rotation")
 		rotArg := ""
 		if len(rot) == 3 {
-			rotArg = fmt.Sprintf("\ncam.rotation_euler = (%s)", fmtFloats(rot))
+			rotArg = fmt.Sprintf("\n    cam.rotation_euler = (%s)", fmtFloats(rot))
 		}
 		name := getStringArg(args, "name")
 		nameArg := ""
 		if name != "" {
-			nameArg = fmt.Sprintf("\ncam.name = \"%s\"", name)
+			nameArg = fmt.Sprintf("\n    cam.name = '%s'", escapePyStr(name))
 		}
 
 		code := fmt.Sprintf(`import bpy
@@ -2255,8 +2277,11 @@ else:
 func handleUndo(bc *blender.Client) ToolHandler {
 	return func(args map[string]any) (any, *Error) {
 		code := `import bpy
-bpy.ops.ed.undo()
-result = {"undone": true}`
+try:
+    bpy.ops.ed.undo()
+    result = {"undone": True}
+except RuntimeError as e:
+    result = {"error": str(e), "hint": "undo requires GUI context; try execute_code directly"}`
 		return execAndFormat(bc, code)
 	}
 }
@@ -2264,8 +2289,11 @@ result = {"undone": true}`
 func handleRedo(bc *blender.Client) ToolHandler {
 	return func(args map[string]any) (any, *Error) {
 		code := `import bpy
-bpy.ops.ed.redo()
-result = {"redone": true}`
+try:
+    bpy.ops.ed.redo()
+    result = {"redone": True}
+except RuntimeError as e:
+    result = {"error": str(e), "hint": "redo requires GUI context; try execute_code directly"}`
 		return execAndFormat(bc, code)
 	}
 }
@@ -2293,7 +2321,7 @@ for col in bpy.data.collections:
     collections.append({
         "name": col.name,
         "object_count": len(col.objects),
-        "parent": col.parent.name if col.parent else None,
+        "children": [c.name for c in col.children],
     })
 result = {"collections": collections, "count": len(collections)}`
 		return execAndFormat(bc, code)
@@ -2318,12 +2346,12 @@ func handleRenderAnimation(bc *blender.Client) ToolHandler {
 
 		code := fmt.Sprintf(`import bpy, os
 scene = bpy.context.scene
-os.makedirs("%s", exist_ok=True)
-scene.render.filepath = os.path.join("%s", "frame_####")
+os.makedirs('%s', exist_ok=True)
+scene.render.filepath = os.path.join('%s', 'frame_####')
 %s%s
 bpy.ops.render.render(animation=True)
-result = {"rendered": True, "output_dir": "%s"}
-`, outputDir, outputDir, startArg, endArg, outputDir)
+result = {"rendered": True, "output_dir": '%s'}
+`, escapePyStr(outputDir), escapePyStr(outputDir), startArg, endArg, escapePyStr(outputDir))
 		return execAndFormat(bc, code)
 	}
 }
@@ -2337,7 +2365,7 @@ func handleSetMaterialTexture(bc *blender.Client) ToolHandler {
 		}
 
 		code := fmt.Sprintf(`import bpy, os
-mat = bpy.data.materials.get("%s")
+mat = bpy.data.materials.get('%s')
 if mat is None:
     result = {"error": "material not found"}
 else:
@@ -2347,10 +2375,10 @@ else:
         result = {"error": "no Principled BSDF node found"}
     else:
         img_node = mat.node_tree.nodes.new("ShaderNodeTexImage")
-        img_node.image = bpy.data.images.load("%s")
+        img_node.image = bpy.data.images.load('%s')
         mat.node_tree.links.new(img_node.outputs["Color"], bsdf.inputs["Base Color"])
-        result = {"material": mat.name, "texture": "%s"}
-`, matName, imagePath, imagePath)
+        result = {"material": mat.name, "texture": '%s'}
+`, escapePyStr(matName), escapePyStr(imagePath), escapePyStr(imagePath))
 		return execAndFormat(bc, code)
 	}
 }
@@ -2412,8 +2440,15 @@ else:
     else:
         nodes = []
         for n in mat.node_tree.nodes:
-            inputs = [{"name": inp.name, "type": inp.type, "default_value": list(inp.default_value) if inp.default_value is not None else None} for inp in n.inputs]
-            outputs = [{"name": out.name, "type": out.type, "default_value": list(out.default_value) if out.default_value is not None else None} for out in n.outputs]
+            def safe_val(socket):
+                if not hasattr(socket, 'default_value') or socket.default_value is None:
+                    return None
+                try:
+                    return list(socket.default_value)
+                except:
+                    return str(socket.default_value)
+            inputs = [{"name": inp.name, "type": inp.type, "default_value": safe_val(inp)} for inp in n.inputs]
+            outputs = [{"name": out.name, "type": out.type, "default_value": safe_val(out)} for out in n.outputs]
             nodes.append({
                 "name": n.name,
                 "type": n.type,
@@ -2438,18 +2473,16 @@ else:
 func handleGetAnimationData(bc *blender.Client) ToolHandler {
 	return func(args map[string]any) (any, *Error) {
 		objName := getStringArg(args, "object_name")
-		objArg := ""
+		objCode := ""
 		if objName != "" {
-			objArg = fmt.Sprintf(`obj = bpy.data.objects.get("%s")
+			objCode = fmt.Sprintf(`obj = bpy.data.objects.get('%s')
 if obj is None:
     result = {"error": "object not found"}
-    return
-`, objName)
+`, escapePyStr(objName))
 		} else {
-			objArg = `obj = bpy.context.active_object
+			objCode = `obj = bpy.context.active_object
 if obj is None:
     result = {"error": "no active object"}
-    return
 `
 		}
 
@@ -2457,7 +2490,16 @@ if obj is None:
 %s
 keyframes = {}
 if obj.animation_data and obj.animation_data.action:
-    for fc in obj.animation_data.action.fcurves:
+    action = obj.animation_data.action
+    fc_list = []
+    if action.is_action_legacy:
+        fc_list = list(action.fcurves)
+    else:
+        for layer in action.layers:
+            for strip in layer.strips:
+                for cb in strip.channelbags:
+                    fc_list.extend(list(cb.fcurves))
+    for fc in fc_list:
         kfs = [{"frame": kp.co[0], "value": kp.co[1]} for kp in fc.keyframe_points]
         keyframes[fc.data_path + ("[" + str(fc.array_index) + "]" if fc.array_index >= 0 else "")] = kfs
 
@@ -2492,7 +2534,7 @@ result = {
     "driver_count": len(drivers),
     "drivers": drivers,
 }
-`, objArg)
+`, objCode)
 		return execAndFormat(bc, code)
 	}
 }
@@ -2971,12 +3013,12 @@ else:
 		}
 
 		code := fmt.Sprintf(`import bpy, os
-abs_path = os.path.abspath("%s")
+abs_path = os.path.abspath('%s')
 if not abs_path.endswith(".blend"):
     abs_path += ".blend"
 bpy.ops.wm.save_as_mainfile(filepath=abs_path, compress=True, relative_remap=True)
 result = {"filepath": abs_path, "compressed": True}
-`, filepath)
+`, escapePyStr(filepath))
 		return execAndFormat(bc, code)
 	}
 }
@@ -3116,9 +3158,9 @@ func handleExportGLTF(bc *blender.Client) ToolHandler {
 			filepath += ".glb"
 		}
 		code := fmt.Sprintf(`import bpy
-bpy.ops.export_scene.gltf(filepath="%s")
-result = {"filepath": "%s", "format": "glTF"}
-`, filepath, filepath)
+bpy.ops.export_scene.gltf(filepath='%s')
+result = {"filepath": '%s', "format": "glTF"}
+`, escapePyStr(filepath), escapePyStr(filepath))
 		return execAndFormat(bc, code)
 	}
 }
@@ -3133,9 +3175,9 @@ func handleExportOBJ(bc *blender.Client) ToolHandler {
 			filepath += ".obj"
 		}
 		code := fmt.Sprintf(`import bpy
-bpy.ops.wm.obj_export(filepath="%s")
-result = {"filepath": "%s", "format": "OBJ"}
-`, filepath, filepath)
+bpy.ops.wm.obj_export(filepath='%s')
+result = {"filepath": '%s', "format": "OBJ"}
+`, escapePyStr(filepath), escapePyStr(filepath))
 		return execAndFormat(bc, code)
 	}
 }
@@ -3150,9 +3192,9 @@ func handleExportFBX(bc *blender.Client) ToolHandler {
 			filepath += ".fbx"
 		}
 		code := fmt.Sprintf(`import bpy
-bpy.ops.export_scene.fbx(filepath="%s")
-result = {"filepath": "%s", "format": "FBX"}
-`, filepath, filepath)
+bpy.ops.export_scene.fbx(filepath='%s')
+result = {"filepath": '%s', "format": "FBX"}
+`, escapePyStr(filepath), escapePyStr(filepath))
 		return execAndFormat(bc, code)
 	}
 }
@@ -5083,25 +5125,29 @@ func handlePoseLibraryOps(bc *blender.Client) ToolHandler {
 				return nil, &Error{Code: CodeInvalidParams, Message: "armature_name is required"}
 			}
 			code := fmt.Sprintf(`import bpy
-obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'ARMATURE':
+obj = bpy.data.objects.get('%s')
+if obj is None or obj.type not in ('ARMATURE', 'ARMATURE_DATA'):
     result = {"error": "not an armature"}
 else:
-    # List all actions that have pose data for this armature
     actions = []
     for a in bpy.data.actions:
-        # Check if action has keyframes on pose bones
         has_pose = False
-        for fc in a.fcurves:
+        fc_list = []
+        if a.is_action_legacy:
+            fc_list = list(a.fcurves)
+        else:
+            for layer in a.layers:
+                for strip in layer.strips:
+                    for cb in strip.channelbags:
+                        fc_list.extend(list(cb.fcurves))
+        for fc in fc_list:
             if fc.data_path.startswith("pose.bones"):
                 has_pose = True
                 break
         if has_pose:
-            actions.append({"name": a.name, "frame_count": a.frame_range[1] - a.frame_range[0] + 1, "users": a.users})
-    # Also list any stored pose markers
-    pose_markers = [{"name": pm.name, "frame": pm.frame} for pm in a.pose_markers] if hasattr(a, 'pose_markers') else []
+            actions.append({"name": a.name, "frame_range": list(a.frame_range), "users": a.users})
     result = {"armature": obj.name, "actions": actions, "count": len(actions)}
-`, armName)
+`, escapePyStr(armName))
 			return execAndFormat(bc, code)
 
 		case "save_pose":
@@ -5110,13 +5156,13 @@ else:
 				return nil, &Error{Code: CodeInvalidParams, Message: "armature_name and pose_name are required"}
 			}
 			code := fmt.Sprintf(`import bpy
-obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'ARMATURE':
+obj = bpy.data.objects.get('%s')
+if obj is None or obj.type not in ('ARMATURE', 'ARMATURE_DATA'):
     result = {"error": "not an armature"}
 else:
     bpy.context.view_layer.objects.active = obj
     obj.select_set(True)
-    action = bpy.data.actions.new(name="%s")
+    action = bpy.data.actions.new(name='%s')
     action.use_fake_user = True
     stored = 0
     for pb in obj.pose.bones:
@@ -5142,8 +5188,8 @@ else:
                 fc.keyframe_points.add(1)
                 fc.keyframe_points[0].co = (1, pb.scale[i])
             stored += 1
-    result = {"saved": "%s", "action": action.name, "bones_stored": stored, "armature": obj.name}
-`, armName, poseName, poseName)
+    result = {"saved": '%s', "action": action.name, "bones_stored": stored, "armature": obj.name}
+`, escapePyStr(armName), escapePyStr(poseName), escapePyStr(poseName))
 			return execAndFormat(bc, code)
 
 		case "apply_pose":
@@ -5152,18 +5198,26 @@ else:
 				return nil, &Error{Code: CodeInvalidParams, Message: "armature_name and pose_name are required"}
 			}
 			code := fmt.Sprintf(`import bpy
-obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'ARMATURE':
+obj = bpy.data.objects.get('%s')
+if obj is None or obj.type not in ('ARMATURE', 'ARMATURE_DATA'):
     result = {"error": "not an armature"}
 else:
-    action = bpy.data.actions.get("%s")
+    action = bpy.data.actions.get('%s')
     if action is None:
         result = {"error": "action not found: %s"}
     else:
         bpy.context.view_layer.objects.active = obj
         obj.select_set(True)
+        fc_list = []
+        if action.is_action_legacy:
+            fc_list = list(action.fcurves)
+        else:
+            for layer in action.layers:
+                for strip in layer.strips:
+                    for cb in strip.channelbags:
+                        fc_list.extend(list(cb.fcurves))
         applied = 0
-        for fc in action.fcurves:
+        for fc in fc_list:
             path = fc.data_path
             if "pose.bones" in path:
                 bone_name = path.split("pose.bones['")[1].split("']")[0]
@@ -5178,8 +5232,8 @@ else:
                     elif "scale" in path:
                         pb.scale[fc.array_index] = fc.evaluate(1)
                         applied += 1
-        result = {"applied": "%s", "armature": obj.name, "bones_modified": applied}
-`, armName, poseName, poseName, poseName)
+        result = {"applied": '%s', "armature": obj.name, "bones_modified": applied}
+`, escapePyStr(armName), escapePyStr(poseName), escapePyStr(poseName), escapePyStr(poseName))
 			return execAndFormat(bc, code)
 
 		case "create_library":
@@ -5218,8 +5272,8 @@ func handleRigifyOps(bc *blender.Client) ToolHandler {
 				return nil, &Error{Code: CodeInvalidParams, Message: "armature_name is required"}
 			}
 			code := fmt.Sprintf(`import bpy
-obj = bpy.data.objects.get("%s")
-if obj is None or obj.type != 'ARMATURE':
+obj = bpy.data.objects.get('%s')
+if obj is None or obj.type not in ('ARMATURE', 'ARMATURE_DATA'):
     result = {"error": "not an armature"}
 else:
     bpy.context.view_layer.objects.active = obj
@@ -5275,8 +5329,11 @@ result = {"metarigs": metarigs, "count": len(metarigs)}
 
 		case "list_rig_types":
 			code := `import bpy
-rig_types = [r.identifier for r in bpy.types.RigType.__subclasses__()]
-result = {"rig_types": rig_types, "count": len(rig_types)}
+try:
+    rig_types = [r.identifier for r in bpy.types.RigType.__subclasses__()]
+    result = {"rig_types": rig_types, "count": len(rig_types)}
+except AttributeError:
+    result = {"error": "Rigify addon not installed or not compatible with this Blender version", "hint": "Enable Rigify in Edit > Preferences > Add-ons"}
 `
 			return execAndFormat(bc, code)
 
